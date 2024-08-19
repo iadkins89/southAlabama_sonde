@@ -1,10 +1,7 @@
 from dash import dcc, html, register_page
 import dash_bootstrap_components as dbc
-import plotly.graph_objs as go
 from datetime import datetime
 from dash_extensions import EventSource
-from dash_extensions import WebSocket
-#from dash_extensions import WebSocketHandler
 from server.models import get_unique_sensor_names
 
 register_page(
