@@ -1,6 +1,7 @@
 from dash import dcc, html, register_page
 import plotly.graph_objs as go
 import dash_bootstrap_components as dbc
+import os
 
 register_page(
     __name__,
@@ -31,7 +32,7 @@ map_graph = dcc.Graph(
             autosize=True,
             hovermode='closest',
             mapbox=dict(
-                accesstoken='pk.eyJ1IjoiaWVhMjAyMSIsImEiOiJjbHh6ZXp4OWgwYXdrMmxxMTYwcmtrNGdiIn0.kchUpTpboU3YMlrUkx8HuA',
+                accesstoken=os.environ.get("MAP_ACCESS_TOKEN"),
                 bearing=0,
                 center=dict(
                     lat=30.685075,
