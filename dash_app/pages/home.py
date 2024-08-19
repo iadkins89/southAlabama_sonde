@@ -30,7 +30,6 @@ map_graph = dcc.Graph(
             },
             autosize=True,
             hovermode='closest',
-            #margin=dict(l=20, r=20, t=50, b=10),
             mapbox=dict(
                 accesstoken='pk.eyJ1IjoiaWVhMjAyMSIsImEiOiJjbHh6ZXp4OWgwYXdrMmxxMTYwcmtrNGdiIn0.kchUpTpboU3YMlrUkx8HuA',
                 bearing=0,
