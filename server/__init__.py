@@ -6,7 +6,7 @@ import os
 def create_server():
 
     server = Flask(__name__)
-    server.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL", 'postgresql://ianadkins:dessert*raid@localhost:5432/ianadkins')
+    server.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL")
     server.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     init_db(server)
     
