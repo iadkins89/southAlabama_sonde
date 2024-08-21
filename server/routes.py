@@ -4,6 +4,7 @@ from .models import SensorData, LoraData
 from .database import db
 import json
 import time
+import pytz
 
 def setup_routes(server):
     @server.route('/receive_data', methods=['POST'])
@@ -18,10 +19,13 @@ def setup_routes(server):
         turb_data = sensor_data['decoded']['payload']['turbidity']
         ph_data = sensor_data['decoded']['payload']['ph']
         temp_data = sensor_data['decoded']['payload']['temperature']
-        
-
         unix_time_data = sensor_data['decoded']['payload']['timestamp']
-        timestamp = datetime.fromtimestamp(unix_time_data).strftime('%Y-%m-%dT%H:%M:%S')
+
+        # Convert the timestamp to Central Time
+        utc_time = datetime.fromtimestamp(unix_time_data, pytz.utc)
+        central = pytz.timezone('America/Chicago')
+        central_time = utc_time.astimezone(central)
+        timestamp = central_time.strftime('%Y-%m-%dT%H:%M:%S')
 
         new_sensor_data = SensorData(
             name = name,
