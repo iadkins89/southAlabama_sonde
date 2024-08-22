@@ -15,12 +15,12 @@ def register_callbacks(app):
 
         data = query_data(start_date, end_date, sensor_name)
 
-        timestamps = [d['timestamp'] for d in data]
-        temperatures = [d['temperature'] for d in data]
-        dissolved_oxygen = [d['dissolved_oxygen'] for d in data]
-        conductivity = [d['conductivity'] for d in data]
-        turbidity = [d['turbidity'] for d in data]
-        ph_values = [d['ph'] for d in data]
+        timestamps = [d.timestamp for d in data]
+        temperatures = [d.temperature for d in data]
+        dissolved_oxygen = [d.dissolved_oxygen for d in data]
+        conductivity = [d.conductivity for d in data]
+        turbidity = [d.turbidity for d in data]
+        ph_values = [d.ph for d in data]
 
         # Create subplots with shared x-axis
         fig = make_subplots(
