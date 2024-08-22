@@ -2,6 +2,7 @@ from sqlalchemy import distinct
 from datetime import datetime
 from server import db
 import pandas as pd
+from dateutil.parser import parse as parse_date
 
 class SensorData(db.Model):
     __tablename__ = 'sonde_data'
@@ -31,11 +32,10 @@ class LoraData(db.Model):
         return f"<LoraData {self.name} {self.timestamp} {self.rssi} {self.snr}>"
 
 def query_data(start_date, end_date, name):
-    # Convert strings to datetime objects including microseconds
-    print(start_date)
-    print(end_date)
-    start_dt = datetime.strptime(start_date, '%Y-%m-%dT%H:%M:%S.%f').replace(hour=0, minute=0, second=0, microsecond=0)
-    end_dt = datetime.strptime(end_date, '%Y-%m-%dT%H:%M:%S.%f').replace(hour=23, minute=59, second=59, microsecond=999999)
+
+    # Parse the strings into datetime objects and set the times
+    start_dt = parse_date(start_date).replace(hour=0, minute=0, second=0)
+    end_dt = parse_date(end_date).replace(hour=23, minute=59, second=59)
 
     result = db.session.query(SensorData).filter(SensorData.name == name, SensorData.timestamp >= start_dt, SensorData.timestamp <= end_dt).all()
     return result
