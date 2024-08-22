@@ -32,6 +32,8 @@ class LoraData(db.Model):
 
 def query_data(start_date, end_date, name):
     # Convert strings to datetime objects including microseconds
+    print(start_date)
+    print(end_date)
     start_dt = datetime.strptime(start_date, '%Y-%m-%dT%H:%M:%S.%f').replace(hour=0, minute=0, second=0, microsecond=0)
     end_dt = datetime.strptime(end_date, '%Y-%m-%dT%H:%M:%S.%f').replace(hour=23, minute=59, second=59, microsecond=999999)
 
