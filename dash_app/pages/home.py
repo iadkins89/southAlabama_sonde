@@ -60,7 +60,7 @@ def layout():
             dbc.Row(
                 dbc.Col(
                     html.P(
-                        "This map shows the location of the sensor of activately deployed sensors in our network. "
+                        "This map shows the location of actively deployed sensors in our network. "
                         "You can use this map to visualize the sensor's position and explore the surrounding area.",
                         "Collected sensor measurements can be viewed at the Dashboard tab of this webpage.",
                         className="lead",
