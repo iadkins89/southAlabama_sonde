@@ -56,7 +56,6 @@ def layout():
                     'hoverClosestCartesian', 'hoverCompareCartesian',
                     'toggleSpikelines'
                 ],
-                'displayModeBar': False,  # Ensure the mode bar is always displayed
                 'displaylogo': False,  # Optional: remove Plotly logo
                 'modeBarStyle': {
                     'bgcolor': 'white',  # Set the background to transparent
