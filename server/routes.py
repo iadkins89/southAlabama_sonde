@@ -48,26 +48,3 @@ def setup_routes(server):
         db.session.commit()
 
         return jsonify({'message': 'Data received and broadcasted.'}), 200
-        
-    @server.route('/eventsource')
-    def eventsource():
-        def generate():
-            with server.app_context():
-                while True:
-                    data = db.session.query(SensorData).filter(
-                                SensorData.timestamp >= datetime.utcnow() - timedelta(days=2)
-                            ).all()
-                    data_json = [
-                        {
-                            "name":d.name,
-                            "timestamp": d.timestamp.strftime('%Y-%m-%dT%H:%M:%S'),
-                            "dissolved_oxygen": d.dissolved_oxygen,
-                            "conductivity": d.conductivity,
-                            "turbidity": d.turbidity,
-                            "ph": d.ph,
-                            "temperature": d.temperature
-                        } for d in data
-                    ]
-                    time.sleep(1)
-                    yield f"data: {json.dumps(data_json)}\n\n"
-        return Response(generate(), mimetype='text/event-stream')

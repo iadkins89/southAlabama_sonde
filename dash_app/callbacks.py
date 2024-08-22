@@ -1,30 +1,26 @@
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 import plotly.graph_objs as go
-import json
 from server.models import query_data, save_data_to_csv
 from plotly.subplots import make_subplots
 
 def register_callbacks(app):
     @app.callback(
         Output('multi-sensor-graph', 'figure'),
-        [Input('eventsource', 'message'),
+        [Input('date-picker-range', 'start_date'),
+         Input('date-picker-range', 'end_date'),
         Input('table-dropdown', 'value')]
     )
-    def update_multi_sensor_graph(message, sensor_name):
-        if not message:
-            return go.Figure()
+    def update_multi_sensor_graph(start_date, end_date, sensor_name):
 
-        data = json.loads(message)
-        # Filter data based on the selected sensor name
-        filtered_data = [d for d in data if d['name'] == sensor_name]
+        data = query_data(start_date, end_date, sensor_name)
 
-        timestamps = [d['timestamp'] for d in filtered_data]
-        temperatures = [d['temperature'] for d in filtered_data]
-        dissolved_oxygen = [d['dissolved_oxygen'] for d in filtered_data]
-        conductivity = [d['conductivity'] for d in filtered_data]
-        turbidity = [d['turbidity'] for d in filtered_data]
-        ph_values = [d['ph'] for d in filtered_data]
+        timestamps = [d['timestamp'] for d in data]
+        temperatures = [d['temperature'] for d in data]
+        dissolved_oxygen = [d['dissolved_oxygen'] for d in data]
+        conductivity = [d['conductivity'] for d in data]
+        turbidity = [d['turbidity'] for d in data]
+        ph_values = [d['ph'] for d in data]
 
         # Create subplots with shared x-axis
         fig = make_subplots(
