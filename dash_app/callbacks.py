@@ -37,13 +37,14 @@ def register_callbacks(app):
         fig.add_trace(go.Scatter(x=timestamps, y=temperatures, mode='lines+markers', name='Temperature', line={'color': 'lightsalmon'}, marker={'size': 2}, fill='tozeroy', fillcolor='rgba(255, 160, 122, 0.3)', hoverlabel=dict(font_color="black")), row=5, col=1)
 
         # Update layout for each subplot
-        fig.update_xaxes(showspikes=True)
+        fig.update_xaxes(showspikes=True, spikecolor="grey",spikemode="across")
+        fig.update_yaxes(showspikes=True, spikecolor="grey")
 
-        fig.update_yaxes(title_text="(mg/L)", range=[0,20], row=1, col=1, side="right", showspikes=True)
-        fig.update_yaxes(title_text="(mS/cm)",range=[0,20], row=2, col=1, side="right", showspikes=True)
-        fig.update_yaxes(title_text="(NTU)",range=[0,50], row=3, col=1, side="right", showspikes=True)
-        fig.update_yaxes(title_text="pH", range=[0, 14], row=4, col=1, side="right", showspikes=True)
-        fig.update_yaxes(title_text="(°C)", range=[0, 38], row=5, col=1, side="right", showspikes=True)
+        fig.update_yaxes(title_text="(mg/L)", range=[0,20], row=1, col=1, side="right")
+        fig.update_yaxes(title_text="(mS/cm)",range=[0,20], row=2, col=1, side="right")
+        fig.update_yaxes(title_text="(NTU)",range=[0,50], row=3, col=1, side="right")
+        fig.update_yaxes(title_text="pH", range=[0, 14], row=4, col=1, side="right")
+        fig.update_yaxes(title_text="(°C)", range=[0, 38], row=5, col=1, side="right")
 
         # Add annotations for labels on the left side
         annotations = [
