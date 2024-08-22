@@ -49,21 +49,7 @@ def layout():
             )
         ]),
         dbc.Row([
-            dbc.Col(dcc.Graph(id='multi-sensor-graph', config={
-                'modeBarButtonsToRemove': [
-                'zoom2d', 'pan2d', 'select2d', 'lasso2d',
-                'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d',
-                'hoverClosestCartesian', 'hoverCompareCartesian',
-                'toggleSpikelines'
-            ],
-            'displayModeBar': True,  # Ensure the mode bar is always displayed
-            'displaylogo': False,  # Optional: remove Plotly logo
-            'modeBarStyle': {
-                'bgcolor': 'white',  # Set the background to transparent
-                'border': 'none',  # Remove border
-                'border-color': 'rgba(0,0,0,0)',
-                'color': 'rgba(0,0,0,0)'}
-        }), style={'height': '100%', 'width': '100%'})
+            dbc.Col(dcc.Graph(id='multi-sensor-graph'), style={'height': '100%', 'width': '100%'})
         ]),
         EventSource(id='eventsource', url='/eventsource')
     ])
