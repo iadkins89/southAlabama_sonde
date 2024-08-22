@@ -59,7 +59,7 @@ def layout():
             'displayModeBar': True,  # Ensure the mode bar is always displayed
             'displaylogo': False,  # Optional: remove Plotly logo
             'modeBarStyle': {
-                'bgcolor': 'transparent',  # Set the background to transparent
+                'bgcolor': 'white',  # Set the background to transparent
                 'border': 'none',  # Remove border
                 'border-color': 'rgba(0,0,0,0)',
                 'color': 'rgba(0,0,0,0)'}
