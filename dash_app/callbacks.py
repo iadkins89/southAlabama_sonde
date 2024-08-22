@@ -37,8 +37,8 @@ def register_callbacks(app):
         fig.add_trace(go.Scatter(x=timestamps, y=temperatures, mode='lines+markers', name='Temperature', line={'color': 'lightsalmon'}, marker={'size': 2}, fill='tozeroy', fillcolor='rgba(255, 160, 122, 0.3)', hoverlabel=dict(font_color="black")), row=5, col=1)
 
         # Update layout for each subplot
-        fig.update_xaxes(showspikes=True, spikecolor="grey",spikemode="across")
-        fig.update_yaxes(showspikes=True, spikecolor="grey")
+        fig.update_xaxes(showspikes=True, spikecolor="grey", spikemode="across", spikethickness=1)
+        fig.update_yaxes(showspikes=True, spikecolor="grey", spikemode="across", spikethickness=1)
 
         fig.update_yaxes(title_text="(mg/L)", range=[0,20], row=1, col=1, side="right")
         fig.update_yaxes(title_text="(mS/cm)",range=[0,20], row=2, col=1, side="right")
