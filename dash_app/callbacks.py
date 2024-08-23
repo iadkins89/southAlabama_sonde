@@ -30,15 +30,15 @@ def register_callbacks(app):
         )
 
         # Add traces for each parameter
-        fig.add_trace(go.Scatter(x=timestamps, y=dissolved_oxygen, mode='lines+markers', name='Dissolved Oxygen', line={'color': 'lightblue'}, marker={'size': 2}, fill='tozeroy', fillcolor='rgba(173, 216, 230, 0.3)', hoverlabel=dict(font_color="black")), row=1, col=1)
-        fig.add_trace(go.Scatter(x=timestamps, y=conductivity, mode='lines+markers', name='Conductivity', line={'color': 'mediumaquamarine'}, marker={'size': 2}, fill='tozeroy', fillcolor='rgba(102, 205, 170, 0.3)', hoverlabel=dict(font_color="black")), row=2, col=1)
-        fig.add_trace(go.Scatter(x=timestamps, y=turbidity, mode='lines+markers', name='Turbidity', line={'color': 'mediumpurple'}, marker={'size': 2}, fill='tozeroy', fillcolor='rgba(147, 112, 219, 0.3)', hoverlabel=dict(font_color="black")), row=3, col=1)
-        fig.add_trace(go.Scatter(x=timestamps, y=ph_values, mode='lines+markers', name='pH', line={'color': 'coral'}, marker={'size': 2}, fill='tozeroy', fillcolor='rgba(255, 127, 80, 0.3)', hoverlabel=dict(font_color="black")), row=4, col=1)
-        fig.add_trace(go.Scatter(x=timestamps, y=temperatures, mode='lines+markers', name='Temperature', line={'color': 'lightsalmon'}, marker={'size': 2}, fill='tozeroy', fillcolor='rgba(255, 160, 122, 0.3)', hoverlabel=dict(font_color="black")), row=5, col=1)
+        fig.add_trace(go.Scatter(x=timestamps, y=dissolved_oxygen, mode='lines+markers', name='Dissolved Oxygen', line={'color': 'lightblue'}, marker={'size': 5}, fill='tozeroy', fillcolor='rgba(173, 216, 230, 0.3)', hoverlabel=dict(font_color="black")), row=1, col=1)
+        fig.add_trace(go.Scatter(x=timestamps, y=conductivity, mode='lines+markers', name='Conductivity', line={'color': 'mediumaquamarine'}, marker={'size': 5}, fill='tozeroy', fillcolor='rgba(102, 205, 170, 0.3)', hoverlabel=dict(font_color="black")), row=2, col=1)
+        fig.add_trace(go.Scatter(x=timestamps, y=turbidity, mode='lines+markers', name='Turbidity', line={'color': 'mediumpurple'}, marker={'size': 5}, fill='tozeroy', fillcolor='rgba(147, 112, 219, 0.3)', hoverlabel=dict(font_color="black")), row=3, col=1)
+        fig.add_trace(go.Scatter(x=timestamps, y=ph_values, mode='lines+markers', name='pH', line={'color': 'coral'}, marker={'size': 5}, fill='tozeroy', fillcolor='rgba(255, 127, 80, 0.3)', hoverlabel=dict(font_color="black")), row=4, col=1)
+        fig.add_trace(go.Scatter(x=timestamps, y=temperatures, mode='lines+markers', name='Temperature', line={'color': 'lightsalmon'}, marker={'size': 5}, fill='tozeroy', fillcolor='rgba(255, 160, 122, 0.3)', hoverlabel=dict(font_color="black")), row=5, col=1)
 
         # Update layout for each subplot
-        fig.update_xaxes(showspikes=True, spikecolor="grey", spikemode="across", spikethickness=1)
-        fig.update_yaxes(showspikes=True, spikecolor="grey", spikemode="across", spikethickness=1)
+        fig.update_xaxes(showspikes=True, spikecolor="grey", spikemode="marker+across", spikethickness=2)
+        fig.update_yaxes(showspikes=True, spikecolor="grey", spikemode="across", spikethickness=2)
 
         fig.update_yaxes(title_text="(mg/L)", range=[0,20], row=1, col=1, side="right")
         fig.update_yaxes(title_text="(mS/cm)",range=[0,20], row=2, col=1, side="right")
@@ -54,9 +54,12 @@ def register_callbacks(app):
             dict(xref='paper', yref='y4', x=-0.02, y=7, text="pH", showarrow=False, textangle=-90),
             dict(xref='paper', yref='y5', x=-0.02, y=19, text="Temperature", showarrow=False, textangle=-90),
         ]
-        fig.update_layout(annotations=annotations)
+
+        #rebinds all your traces to the x-axis so the x-spikelines go through all subplots
+        fig.update_traces(xaxis="x5")
 
         fig.update_layout(
+            annotations=annotations,
             plot_bgcolor='rgba(0,0,0,0)',  # Set background color to transparent or a specific color
             paper_bgcolor='rgba(0,0,0,0)', 
             margin=dict(l=100, r=100, t=50, b=50),  
