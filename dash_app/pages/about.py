@@ -135,7 +135,7 @@ def layout():
 			html.P(
 					[
 					"You can also explore our latest developments and access our open-source telemetry dashboard on GitHub: ",
-					html.A("Telemetry Dashboard GitHub Repository", href="hhttps://github.com/iadkins89/southAlabama_sonde"),
+					html.A("Telemetry Dashboard GitHub Repository", href="https://github.com/iadkins89/southAlabama_sonde"),
 					],
 					className="lead",
 					style={"margin-left": "190px", "margin-right": "190px"}
