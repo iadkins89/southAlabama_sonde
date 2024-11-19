@@ -87,7 +87,7 @@ def layout():
 	),
 	dbc.Row(
 		dbc.Col(
-			html.H2("Get Involved", tyle={"margin-left": "14.5%", "margin-right": "14.5%"}),
+			html.H2("Get Involved", style={"margin-left": "14.5%", "margin-right": "14.5%"}),
 			width=12
 		)
 	),
