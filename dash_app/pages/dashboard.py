@@ -66,7 +66,7 @@ def layout():
                     'border': 'none',  # Remove border
                     'border-color': 'rgba(0,0,0,0)',
                     'color': 'rgba(0,0,0,0)'}
-            }), xs=12, sm=12, md=12, lg=12 ),
+            }), xs=12, sm=6, md=12, lg=12 ),
         ]),
         EventSource(id='eventsource', url='/eventsource')
     ])
