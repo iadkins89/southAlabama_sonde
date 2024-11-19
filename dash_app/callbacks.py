@@ -3,6 +3,7 @@ from dash.exceptions import PreventUpdate
 import plotly.graph_objs as go
 from server.models import query_data, save_data_to_csv
 from plotly.subplots import make_subplots
+from dash import no_update
 
 def register_callbacks(app):
     @app.callback(
@@ -95,3 +96,14 @@ def register_callbacks(app):
             saved_csv_file = save_data_to_csv(data, f"{filename}.csv")
             return False, '', dict(content=saved_csv_file, filename=f"{filename}.csv")
         return False, '', None
+
+    # Callback to handle marker click and redirect
+    @app.callback(
+        Output('url', 'pathname'),
+        Input('map-graph', 'clickData')
+    )
+    def redirect_on_click(clickData):
+        if clickData:
+            # Example: redirect to a page specific to this sensor's details
+            return '/dashboard'  # or generate URL dynamically based on sensor information
+        return no_update
