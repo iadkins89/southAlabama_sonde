@@ -1,50 +1,72 @@
-from flask import request, jsonify, Response
-from datetime import datetime, timedelta
-from .models import SensorData, LoraData
+from flask import request, jsonify
+from datetime import datetime
+from .models import Sensor, Parameter, SensorData, LoraData
 from .database import db
-import json
-import time
 import pytz
 
 def setup_routes(server):
     @server.route('/receive_data', methods=['POST'])
     def receive_data():
         sensor_data = request.json
-        name = sensor_data["name"]
-        rssi_data = sensor_data['hotspots'][0]['rssi']
-        snr_data = sensor_data['hotspots'][0]['snr']
 
-        do_data = sensor_data['decoded']['payload']['dissolved_oxygen']
-        cond_data = sensor_data['decoded']['payload']['conductivity']
-        turb_data = sensor_data['decoded']['payload']['turbidity']
-        ph_data = sensor_data['decoded']['payload']['ph']
-        temp_data = sensor_data['decoded']['payload']['temperature']
-        unix_time_data = sensor_data['decoded']['payload']['timestamp']
+        # Extract general sensor information
+        sensor_name = sensor_data.get("name")
+        rssi = sensor_data['hotspots'][0].get('rssi')
+        snr = sensor_data['hotspots'][0].get('snr')
 
-        # Convert the timestamp to Central Time
-        utc_time = datetime.fromtimestamp(unix_time_data, pytz.utc)
-        central = pytz.timezone('America/Chicago')
-        central_time = utc_time.astimezone(central)
-        timestamp = central_time.strftime('%Y-%m-%dT%H:%M:%S')
+        # Retrieve or create the sensor
+        sensor = Sensor.query.filter_by(name=sensor_name).first()
+        if not sensor:
+            sensor = Sensor(name=sensor_name)
+            db.session.add(sensor)
+            db.session.commit()
 
-        new_sensor_data = SensorData(
-            name = name,
-            timestamp=timestamp,
-            dissolved_oxygen=do_data,
-            conductivity=cond_data,
-            turbidity=turb_data,
-            ph=ph_data,
-            temperature=temp_data
+        # Decode the payload and timestamp
+        payload = sensor_data.get("decoded", {}).get("payload", {})
+        unix_timestamp = payload.get("timestamp")
+        if not unix_timestamp:
+            return jsonify({"error": "Timestamp is missing in the payload"}), 400
+
+        # Convert timestamp to Central Time
+        utc_time = datetime.utcfromtimestamp(unix_timestamp)
+        central_time = utc_time.replace(tzinfo=pytz.utc).astimezone(pytz.timezone('America/Chicago'))
+
+        # Iterate over payload parameters
+        for param, value in payload.items():
+            # Skip the timestamp key
+            if param == "timestamp":
+                continue
+
+            # Check if the parameter exists in the database
+            parameter = Parameter.query.filter_by(name=param).first()
+            if not parameter:
+                parameter = Parameter(name=param)
+                db.session.add(parameter)
+                db.session.commit()
+
+            if parameter not in sensor.parameters:
+                sensor.parameters.append(parameter)
+
+            # Add the sensor data entry
+            sensor_data_entry = SensorData(
+                sensor_id=sensor.id,
+                timestamp=central_time,
+                parameter_id=parameter.id,
+                value=value
+            )
+            db.session.add(sensor_data_entry)
+
+        # Add LoRa data for the transmission
+        lora_data_entry = LoraData(
+            sensor_id=sensor.id,
+            timestamp=central_time,
+            rssi=rssi,
+            snr=snr
         )
+        db.session.add(lora_data_entry)
 
-        new_lora_data = LoraData(
-            name = name,
-            timestamp = timestamp,
-            rssi = rssi_data,
-            snr=snr_data
-        )
-        db.session.add(new_sensor_data)
-        db.session.add(new_lora_data)
+        # Commit all changes
         db.session.commit()
 
-        return jsonify({'message': 'Data received and broadcasted.'}), 200
+        return jsonify({'message': 'Data received and stored successfully.'}), 200
+

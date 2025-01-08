@@ -19,7 +19,32 @@ map_graph = dcc.Graph(
                 lon=[-88.074669],
                 mode='markers',
                 marker=dict(size=14, color='red'),
-                text=['Sensor Location']
+                text=['sensor1234'],
+                hoverinfo='text',
+            ),
+            go.Scattermapbox(
+                lat=[30.433475],
+                lon=[-88.005984],
+                mode='markers',
+                marker=dict(size=14, color='red'),
+                text=['multi_sensored_sonde1'],
+                hoverinfo='text',
+            ),
+            go.Scattermapbox(
+                lat=[30.54294824],
+                lon=[-87.90090477],
+                mode='markers',
+                marker=dict(size=14, color='blue'),
+                text=['tide_gauge'],
+                hoverinfo='text'
+            ),
+            go.Scattermapbox(
+                lat=[30.259100],
+                lon=[-87.999108],
+                mode='markers',
+                marker=dict(size=14, color='purple'),
+                text=['wave_gauge'],
+                hoverinfo='text'
             )
         ],
         'layout': go.Layout(
@@ -36,7 +61,8 @@ map_graph = dcc.Graph(
                 zoom=8,
                 style='outdoors'
             ),
-            margin=dict(l=0, r=0, t=0, b=0),  # Remove padding around the map
+            margin=dict(l=10, r=10, t=0, b=0),  # Remove padding around the map
+            showlegend=False  # Remove the trace side bar (legend)
         )
     },
     style={'height': '75vh', 'width': '100%'},

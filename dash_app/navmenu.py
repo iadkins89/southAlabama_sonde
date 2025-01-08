@@ -7,12 +7,12 @@ def create_menu():
 	        [
 	        	dbc.Row([
 	            	dbc.Col(html.Img(src='/assets/usa_blue.png', style={'height': '100px'}), width='auto'),
-	            	dbc.Col(html.H1("South Alabama Sonde Telemetry", className="text-left", style={'color': '#154360'}), width='auto')
+	            	dbc.Col(html.H1("South Alabama Telemetry", className="text-left", style={'color': '#154360'}), width='auto')
 	        	], align='center'),
 	            dbc.Nav(
 	                [
 				        dbc.NavLink("Home", active="exact", href="/"),
-				        dbc.NavLink("Dashboard", active="exact", href="/dashboard"),
+				        dbc.NavLink("Onboard Device", active="exact", href="/onboarding"),
 				        dbc.NavLink("About", active="exact", href="/about"),				      
 	                ],
 	                pills=True,
