@@ -3,9 +3,12 @@ from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
 from server.models import query_data, save_data_to_csv, get_measurement_summary, query_most_recent_lora, query_lora_data, create_or_update_sensor
-from dash import no_update, dcc, html
+from dash import no_update, dcc, html, callback_context
 from urllib.parse import urlparse, parse_qs
 import os
+import time
+from datetime import datetime, timedelta
+import pytz
 import base64
 
 USERNAME = 'admin'
@@ -13,14 +16,38 @@ PASSWORD = 'admin'
 def register_callbacks(app):
     @app.callback(
         Output('multi-sensor-graph', 'children'),
-        [Input('temp-date-picker-range', 'start_date'),
-         Input('temp-date-picker-range', 'end_date'),
-        Input("sensor-name-store", "data"),]
+        [
+            Input("range-2-days", "n_clicks"),
+            Input("range-1-week", "n_clicks"),
+            Input("range-1-month", "n_clicks"),
+            Input("range-1-year", "n_clicks"),
+            Input("sensor-name-store", "data")
+        ]
     )
-    def update_multi_sensor_graph(start_date, end_date, sensor_name):
+    def update_multi_sensor_graph(n2d, n1w, n1m, n1y, sensor_name):
+        # Determine which button was clicked
+        cst = pytz.timezone('America/Chicago')
+        cst_today = datetime.now(cst).replace(hour=23, minute=59, second=59)
+        start_date = cst_today - timedelta(days=2)
+
+        ctx = callback_context
+        if ctx.triggered:
+            button_id = ctx.triggered[0]["prop_id"].split(".")[0]
+            if button_id == "range-2-days":
+                start_date = cst_today - timedelta(days=2)
+            elif button_id == "range-1-week":
+                start_date = cst_today - timedelta(weeks=1)
+            elif button_id == "range-1-month":
+                start_date = cst_today - timedelta(weeks=4)
+            elif button_id == "range-1-year":
+                start_date = cst_today - timedelta(days=365)
+
+        #Convert datetime to string (needed for query_data)
+        start_date_string = start_date.strftime("%Y-%m-%d")
+        cst_today_string = cst_today.strftime("%Y-%m-%d")
 
         # Query data
-        data = query_data(start_date, end_date, sensor_name)
+        data = query_data(start_date_string, cst_today_string, sensor_name)
         if not data:
             return html.Div(f"No data available for sensor '{sensor_name}' in the selected date range.")
 
@@ -35,6 +62,15 @@ def register_callbacks(app):
                 parameter_data[parameter_name] = {"timestamps": [], "values": []}
             parameter_data[parameter_name]["timestamps"].append(timestamp)
             parameter_data[parameter_name]["values"].append(value)
+
+        # Sort data by timestamp for each parameter (find better way to do this)
+        for parameter, values in parameter_data.items():
+            sorted_data = sorted(zip(values["timestamps"], values["values"]), key=lambda x: x[0])
+            timestamps_sorted, values_sorted = zip(*sorted_data)
+
+            # Update the parameter data with sorted timestamps and values
+            parameter_data[parameter]["timestamps"] = list(timestamps_sorted)
+            parameter_data[parameter]["values"] = list(values_sorted)
 
         # Generate graphs dynamically
         graphs = []
@@ -62,12 +98,17 @@ def register_callbacks(app):
                         },
                         margin={"l": 40, "r": 40, "t": 40, "b": 80},
                         font={"size": 12},
-                        height=200
+                        height=300
                     )
-                }
+                },
+                config = {
+                    "responsive": True,
+                    'displayModeBar': False,
+                    'displaylogo': False
+                },
             )
-            graphs.append(graph)
-
+            graphs.append(dbc.Col(graph, xs=12, sm=12, md=12, lg=12))
+        time.sleep(1)
         return graphs
 
     @app.callback(
@@ -102,12 +143,11 @@ def register_callbacks(app):
             return False, '', dict(content=saved_csv_file, filename=f"{filename}.csv")
         return False, '', None
 
-    # Callback to handle marker click and redirect
     @app.callback(
-        Output('url', 'href'),
+        Output('home-url', 'href'),
         Input('map-graph', 'clickData')
     )
-    def redirect_on_click(clickData):
+    def home_redirect_on_click(clickData):
         if clickData:
             sensor_name = clickData['points'][0]['text']
 
@@ -115,8 +155,23 @@ def register_callbacks(app):
             return f"/dashboard?name={sensor_name}"
         return no_update
 
+    # Callback to handle marker click and redirect
     @app.callback(
-        [Output("card-title", "children"), Output("summary-content", "children")],
+        [Output('url', 'href'), Output('sensor-name-store', 'data')],
+        Input('map-graph', 'clickData'),
+        prevent_initial_call=True
+    )
+    def redirect_on_click(clickData):
+        if clickData:
+            sensor_name = clickData['points'][0]['text']
+
+            # Generate the URL with query string
+            return f"/dashboard?name={sensor_name}", sensor_name
+        return no_update, no_update
+
+    @app.callback(
+        [Output("card-title", "children"),
+         Output("summary-content", "children")],
         Input("sensor-name-store", "data"),
     )
     def update_summary_from_url(sensor_name):
@@ -134,19 +189,34 @@ def register_callbacks(app):
 
         timestamp = recent_measurements[0]["timestamp"].strftime("%a %b %d, %H:%M")
 
+        #Format title
+        title_name = sensor_name + " " + "Information"
+        title_name = title_name.title()
+
+        title = html.Div(
+            title_name,
+            style={
+                "text-align": "center",
+                "font-weight": "bold"
+            },
+        )
         # Format the content with parameters and values
         parameter_list = html.Div(
             [
                 dbc.Row(
                     [
-                        dbc.Col(html.Div(measurement['parameter']), width=6),
-                        dbc.Col(html.Div(f"{round(measurement['value'], 1)}"), width=6),
+                        dbc.Col(html.Div(measurement['parameter'], style={'text-align': 'left'}), width=8),
+                        dbc.Col(html.Div(f"{round(measurement['value'], 1)}", style={'text-align': 'right'}), width=4),
                     ]
                 )
                 for measurement in recent_measurements
             ],
             style={"list-style-type": "none", "padding": "0", "margin": "0"}  # Remove bullet points and extra spacing
         )
+
+        latitude =  str(summary['latitude']) + u'\N{DEGREE SIGN}' + 'N'
+        longitude = str(summary['longitude']) + u'\N{DEGREE SIGN}' + 'W'
+        location = latitude + "   " + longitude
 
         # Combine the timestamp and parameters
         content = html.Div(
@@ -155,15 +225,22 @@ def register_callbacks(app):
                     timestamp,
                     style={
                         "text-align": "center",
-                        "font-weight": "bold",
-                        "margin-bottom": "10px",
+                        "font-weight": "bold"
                     },
+                ),
+                html.Div(
+                    location,
+                    style={
+                        "text-align": "center",
+                        "font-size": "14px",
+                        "margin-bottom": "10px",
+                    }
                 ),
                 parameter_list,
             ]
         )
 
-        return f"{sensor_name} Information", content
+        return title, content
     @app.callback(
         Output("download-data-offcanvas", "is_open"),
         Input("download-button", "n_clicks"),
@@ -185,7 +262,26 @@ def register_callbacks(app):
         return is_open
 
     @app.callback(
-        [Output("rssi-progress", "value"),
+        Output("sensor-image", "src"),
+        Input("sensor-name-store", "data"),
+        prevent_initial_call=True
+    )
+    def get_sensor_pic(sensor_name):
+
+        image_path = f"dash_app/assets/{sensor_name}.png"
+        print(os.path.join(os.getcwd(), image_path))
+        if os.path.exists(os.path.join(os.getcwd(), image_path)):
+            print(f"image path {image_path}")
+            return f"{image_path}"  # Return the relative path for Dash to render
+        else:
+            print("Default image")
+            return "/assets/no_image_available.png"
+
+    @app.callback(
+        [Output("battery-gauge", "value"),
+         Output("battery-gauge", "label"),
+         Output("battery-gauge", "color"),
+        Output("rssi-progress", "value"),
         Output("rssi-progress", "label"),
         Output("rssi-progress", "color"),
         Output("snr-progress", "value"),
@@ -200,9 +296,21 @@ def register_callbacks(app):
         if not data:
             return html.Div(f"No data available for sensor '{sensor_name}' in the selected date range.")
 
-        rssi = data.rssi
-        snr = data.snr
+        for entry in data:
+            if entry[0] == 'battery':
+                battery = entry[2]
+            if entry[0] == 'rssi':
+                rssi = entry[2]
+            if entry[0] == 'snr':
+                snr = entry[2]
 
+        if battery >= 80:
+            battery_color = "success"
+        elif 40 <= battery < 80:
+            battery_color = 'warning'
+        else:
+            battery_color = ('danger'
+                             '')
         # RSSI transformation and thresholds
         rssi_transformed = max(0, min(100, int((rssi + 120) * 100 / 120)))  # Map -120 to 0 dBm -> 0 to 100
         if rssi >= -50:
@@ -223,6 +331,7 @@ def register_callbacks(app):
 
         # Return updated values, labels, and colors
         return (
+            battery, f"{battery} %", battery_color,
             rssi_transformed, f"{rssi} dBm", rssi_color,
             snr_transformed, f"{snr} dB", snr_color,
         )
@@ -258,7 +367,7 @@ def register_callbacks(app):
                 return dbc.Alert("Device name, latitude, longitude, and device type fields are required!", color="danger")
 
             # Define the base path for uploads
-            upload_directory = os.path.join(os.getcwd(), "assets")  # Replace with your desired directory
+            upload_directory = os.path.join(os.getcwd(), "dash_app/assets")  # Replace with your desired directory
 
             message = create_or_update_sensor(
                 device_name=device_name,

@@ -23,6 +23,9 @@ def setup_routes(server):
 
         # Decode the payload and timestamp
         payload = sensor_data.get("decoded", {}).get("payload", {})
+        payload['rssi'] = rssi
+        payload['snr'] = snr
+        print(payload)
         unix_timestamp = payload.get("timestamp")
         if not unix_timestamp:
             return jsonify({"error": "Timestamp is missing in the payload"}), 400
@@ -47,23 +50,24 @@ def setup_routes(server):
             if parameter not in sensor.parameters:
                 sensor.parameters.append(parameter)
 
-            # Add the sensor data entry
-            sensor_data_entry = SensorData(
-                sensor_id=sensor.id,
-                timestamp=central_time,
-                parameter_id=parameter.id,
-                value=value
-            )
-            db.session.add(sensor_data_entry)
-
-        # Add LoRa data for the transmission
-        lora_data_entry = LoraData(
-            sensor_id=sensor.id,
-            timestamp=central_time,
-            rssi=rssi,
-            snr=snr
-        )
-        db.session.add(lora_data_entry)
+            if param not in ['rssi', 'snr', 'battery']:
+                # Add the sensor data entry
+                sensor_data_entry = SensorData(
+                    sensor_id=sensor.id,
+                    timestamp=central_time,
+                    parameter_id=parameter.id,
+                    value=value
+                )
+                db.session.add(sensor_data_entry)
+            else:
+                # Add LoRa data for the transmission
+                lora_data_entry = LoraData(
+                    sensor_id=sensor.id,
+                    timestamp=central_time,
+                    parameter_id=parameter.id,
+                    value=value
+                )
+                db.session.add(lora_data_entry)
 
         # Commit all changes
         db.session.commit()

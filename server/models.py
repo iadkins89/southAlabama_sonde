@@ -8,6 +8,8 @@ from server import db
 import pandas as pd
 from dateutil.parser import parse as parse_date
 from collections import defaultdict
+from sqlalchemy import desc
+
 
 
 # Association table for many-to-many relationship between Sensor and Parameter
@@ -45,6 +47,7 @@ class Parameter(db.Model):
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     name = db.Column(db.String, unique=True, nullable=False)
+    unit =db.Column(db.String, nullable=True)
 
     # Many-to-many relationship with Sensor
     sensors = relationship('Sensor', secondary=sensor_parameter, back_populates='parameters')
@@ -74,9 +77,8 @@ class LoraData(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     sensor_id = db.Column(db.Integer, ForeignKey('sensor.id'), nullable=False)
     timestamp = db.Column(db.DateTime, index=True, nullable=False)
-    rssi = db.Column(db.Integer, nullable=False)
-    snr = db.Column(db.Float, nullable=False)
-    battery = db.Column(db.Float, nullable=True)
+    parameter_id = db.Column(db.Integer, ForeignKey('parameter.id'), nullable=False)
+    value = db.Column(db.Float, nullable=False)
 
     # Relationships
     sensor = relationship('Sensor', back_populates='lora_data')
@@ -87,16 +89,18 @@ class LoraData(db.Model):
 
 def query_most_recent_lora(sensor_name):
     result = (
-        db.session.query(LoraData.rssi, LoraData.snr)
+        db.session.query(Parameter.name, LoraData.timestamp, LoraData.value)
         .join(Sensor)
-        .filter(Sensor.name == sensor_name)
+        .join(Parameter)
+        .filter(Sensor.name == sensor_name, LoraData.parameter_id == Parameter.id)
         .order_by(desc(LoraData.timestamp))
-        .first()
+        .limit(3)  # Fetch one record per parameter
+        .all()
     )
-
     return result
 # Query function
 def query_data(start_date, end_date, sensor_name):
+    #type datetime
     start_dt = parse_date(start_date).replace(hour=0, minute=0, second=0)
     end_dt = parse_date(end_date).replace(hour=23, minute=59, second=59)
 
@@ -115,9 +119,10 @@ def query_lora_data(start_date, end_date, sensor_name):
     end_dt = parse_date(end_date).replace(hour=23, minute=59, second=59)
 
     result = (
-        db.session.query(LoraData.rssi, LoraData.snr, LoraData.timestamp)
+        db.session.query(Parameter.name, LoraData.timestamp, LoraData.value)
         .join(Sensor)
-        .filter(Sensor.name == sensor_name, LoraData.timestamp >= start_dt, LoraData.timestamp <= end_dt)
+        .join(Parameter)
+        .filter(Sensor.name == sensor_name, LoraData.parameter_id == Parameter.id, LoraData.timestamp >= start_dt, LoraData.timestamp <= end_dt)
         .all()
     )
 
@@ -142,16 +147,27 @@ def save_data_to_csv(data, sensor_name):
 
     return csv_data
 
-# Get unique sensor names
-def get_unique_sensor_names():
-    unique_names = db.session.query(distinct(Sensor.name)).all()
-    return [name[0] for name in unique_names]
+def get_all_sensors():
+    """
+    Retrieves all sensors from the database with their names, latitude, longitude, and device types.
 
-from sqlalchemy import func, desc
-from datetime import datetime, timedelta
-
-from sqlalchemy import desc
-from datetime import datetime
+    Returns:
+        list: A list of dictionaries, each containing sensor details.
+    """
+    try:
+        sensors = Sensor.query.all()
+        return [
+            {
+                "name": sensor.name,
+                "latitude": sensor.latitude,
+                "longitude": sensor.longitude,
+                "device_type": sensor.device_type,
+            }
+            for sensor in sensors
+        ]
+    except Exception as e:
+        print(f"Error retrieving sensors: {e}")
+        return []
 
 def get_measurement_summary(sensor_name):
     """
@@ -187,7 +203,7 @@ def get_measurement_summary(sensor_name):
         .join(Sensor)
         .filter(Sensor.name == sensor_name)
         .order_by(desc(SensorData.timestamp))
-        .limit(len(parameter_names))  # Fetch one record per parameter
+        .limit(len(parameter_names)-3)  # Fetch one record per parameter
         .all()
     )
 
@@ -197,6 +213,8 @@ def get_measurement_summary(sensor_name):
     # Format the output
     summary = {
         "sensor_name": sensor_name,
+        "latitude": sensor.latitude,
+        "longitude": sensor.longitude,
         "most_recent_measurements": [
             {
                 "parameter": db.session.query(Parameter.name)
@@ -214,6 +232,17 @@ def get_measurement_summary(sensor_name):
 def get_sensor_by_name(device_name):
     """Retrieve a sensor by its name."""
     return db.session.query(Sensor).filter_by(name=device_name).first()
+
+
+def decode_base64(image_data):
+    if "," in image_data:
+        # Split off the metadata prefix
+        _, base64_data = image_data.split(",", 1)
+    else:
+        base64_data = image_data
+
+    # Decode the Base64 string
+    return base64.b64decode(base64_data)
 
 def create_or_update_sensor(device_name, latitude, longitude, device_type, image_data=None, base_path=None):
     """
@@ -241,8 +270,9 @@ def create_or_update_sensor(device_name, latitude, longitude, device_type, image
 
             if image_data and base_path:
                 save_path = os.path.join(base_path, f"{device_name}.png")
+                decoded_image = decode_base64(image_data)
                 with open(save_path, "wb") as f:
-                    f.write(base64.b64decode(image_data))
+                    f.write(decoded_image)
                 sensor.image_path = save_path
         else:  # Create a new sensor
             new_sensor = Sensor(
@@ -250,13 +280,14 @@ def create_or_update_sensor(device_name, latitude, longitude, device_type, image
                 latitude=latitude,
                 longitude=longitude,
                 device_type=device_type,
-                image_path=None
+                image=None
             )
 
             if image_data and base_path:
                 save_path = os.path.join(base_path, f"{device_name}.png")
+                decoded_image = decode_base64(image_data)
                 with open(save_path, "wb") as f:
-                    f.write(base64.b64decode(image_data))
+                    f.write(decoded_image)
                 new_sensor.image_path = save_path
 
             db.session.add(new_sensor)

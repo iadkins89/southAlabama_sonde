@@ -1,12 +1,8 @@
 from dash import dcc, html, register_page
 import dash_bootstrap_components as dbc
 from datetime import datetime
-from dash_extensions import EventSource
-from server.models import get_unique_sensor_names
 import pytz
-import plotly.graph_objs as go
-import os
-
+from .home import get_map_graph
 
 register_page(
     __name__,
@@ -14,99 +10,83 @@ register_page(
     path='/dashboard'
 )
 
-# Map graph configuration
-map_graph = dcc.Graph(
-    id='map-graph',
-    figure={
-        'data': [
-            go.Scattermapbox(
-                lat=[30.685075],
-                lon=[-88.074669],
-                mode='markers',
-                marker=dict(size=14, color='red'),
-                text=['sensor1234'],
-                hoverinfo='text',
-            ),
-            go.Scattermapbox(
-                lat=[30.433475],
-                lon=[-88.005984],
-                mode='markers',
-                marker=dict(size=14, color='red'),
-                text=['multi_sensored_sonde1'],
-                hoverinfo='text',
-            ),
-            go.Scattermapbox(
-                lat=[30.54294824],
-                lon=[-87.90090477],
-                mode='markers',
-                marker=dict(size=14, color='blue'),
-                text=['tide_gauge'],
-                hoverinfo='text'
-            ),
-            go.Scattermapbox(
-                lat=[30.259100],
-                lon=[-87.999108],
-                mode='markers',
-                marker=dict(size=14, color='purple'),
-                text=['wave_gauge'],
-                hoverinfo='text'
-            )
-        ],
-        'layout': go.Layout(
-            autosize=True,
-            hovermode='closest',
-            mapbox=dict(
-                accesstoken=os.environ.get("MAP_ACCESS_TOKEN"),
-                bearing=0,
-                center=dict(
-                    lat=30.685075,
-                    lon=-88.074669
-                ),
-                pitch=0,
-                zoom=8,
-                style='outdoors'
-            ),
-            margin=dict(l=0, r=0, t=0, b=0),  # Remove padding around the map
-            showlegend=False  # Remove the trace side bar (legend)
-        )
-    },
-    style={'height': '50vh'},
-    config={
-        'displayModeBar': False  # Hide the mode bar completely
-    }
-)
-
 def layout(name=None, **other_unknown_query_strings):
     cst = pytz.timezone('America/Chicago')
     cst_today = datetime.now(cst).replace(hour=0, minute=0, second=0, microsecond=0)
 
     layout = dbc.Container([
-        dcc.Location(id='url', refresh=True),
+        dcc.Location(id='url', refresh=False),
         dcc.Store(id="sensor-name-store", data=name),
 
         # First Row (Map and Info Box)
         dbc.Row([
+            # Column for the map (unchanged)
             dbc.Col(
-                dbc.Card(map_graph)
-                # map_graph,
-                # xs=12, sm=12, md=6, lg=6, className="mb-3"
+                dbc.Card(get_map_graph("50vh", 0, 0, 0, 0)),
+                xs=12, sm=12, md=12, lg=6, className="mb-3"
             ),
+
+            # Column for the sensor card
             dbc.Col(
                 dbc.Card(
                     [
-                        #dbc.CardHeader(name),
                         dbc.CardBody(
                             [
-                                html.H5(id="card-title", className="card-title"),  # Dynamically set title
-                                html.Div(
-                                    id="summary-content",
-                                    children=html.P("Loading summary information...", className="summary-text"),
-                                    style={"textAlign": "left"}
+                                # Create a row for the summary content and image
+                                dbc.Row(
+                                    [
+                                        # Column for the title and summary content
+                                        dbc.Col(
+                                            [
+                                                html.H5(id="card-title", className="card-title"),
+                                                        # Dynamically set title
+                                                        html.Div(
+                                                            id="summary-content",
+                                                            children=html.P("Loading summary information...",
+                                                                            className="summary-text"),
+                                                            style={"text-align": "left"}
+                                                        )
+                                                     ],
+                                                        width=True,  # Takes remaining space
+                                                    ),
+
+                                        # Column for the sensor image
+                                        dbc.Col([
+                                            html.H5(),
+                                            html.Div(
+                                                id="sensor-image-container",
+                                                children=[
+                                                    html.Img(
+                                                        id="sensor-image",  # ID to dynamically update the image
+                                                        src=f"/assets/{name}.png",  # Default image path
+                                                        alt="Sensor Image",
+                                                        style={"width": "250px", "height": "auto",
+                                                               "borderRadius": "8px"}  # Adjust style as needed
+                                                    )
+                                                ],
+                                                style={
+                                                    "display": "flex",
+                                                    "alignItems": "center",  # Vertically centers the image
+                                                    "justifyContent": "center",
+                                                    # Horizontally centers the image (if needed)
+                                                    "height": "100%",  # Ensure the container takes up full height
+                                                }
+                                            ),
+                                           ], width="auto",  # Adjust width based on image size
+                                        ),
+                                    ]
                                 ),
                             ]
                         ),
-                        dbc.CardFooter([dbc.Button("Download Data", id="download-button", size="sm", color="light"),
-                                       dbc.Button("Sensor Health", id="sensor-health-button", size="sm", color="info", className="ms-2")]),
+
+                        # Footer for the card (unchanged)
+                        dbc.CardFooter([
+                            dbc.Button("Download Data", id="download-button", size="sm", color="light"),
+                            dbc.Button("Sensor Health", id="sensor-health-button", size="sm", color="info",
+                                       className="ms-2")
+                        ]),
+
+                        # Offcanvas for download options (unchanged)
                         dbc.Offcanvas(
                             html.Div([
                                 html.P("Data Type"),
@@ -125,8 +105,10 @@ def layout(name=None, **other_unknown_query_strings):
                                     stay_open_on_select=True,
                                 ),
                                 html.P("File Name", style={'margin-top': '14px'}),
-                                dbc.Input(id="csv-filename", placeholder="Enter CSV filename", style={'margin-bottom': '12px'}),
-                                dbc.Button("Download CSV", id="set-filename-btn", size = "sm", color="primary", className="mt-2"),
+                                dbc.Input(id="csv-filename", placeholder="Enter CSV filename",
+                                          style={'margin-bottom': '12px'}),
+                                dbc.Button("Download CSV", id="set-filename-btn", size="sm", color="primary",
+                                           className="mt-2"),
                                 dcc.Download(id="download-dataframe-csv"),
                                 dcc.ConfirmDialog(
                                     id='confirm-dialog',
@@ -137,6 +119,8 @@ def layout(name=None, **other_unknown_query_strings):
                             title="Download Options",
                             is_open=False,
                         ),
+
+                        # Offcanvas for sensor health (unchanged)
                         dbc.Offcanvas(
                             html.Div([
                                 html.H5("Battery Level", className="mt-3"),
@@ -151,39 +135,37 @@ def layout(name=None, **other_unknown_query_strings):
                             title="Sensor Health",
                             is_open=False,
                         ),
-                    ], style={"height":"100%"}
-                ), xs=12, sm=12, md=12, lg=6
+                    ], style={"height": "100%"}
+                ),
+                xs=12, sm=12, md=12, lg=6
             ),
         ], className="g-3", justify="center"),
 
-        # Second Row (Graph)
-        dbc.Row([
+        # Second Row (Date Picker)
+        dbc.Row(
             dbc.Col(
-                dcc.DatePickerRange(
-                    id='temp-date-picker-range',
-                    minimum_nights=0,
-                    start_date=cst_today,
-                    end_date=cst_today,
-                    stay_open_on_select=True,
+                dbc.ButtonGroup(
+                    [
+                        dbc.Button("2 Days", id="range-2-days", color="primary", outline=False, active=True),
+                        dbc.Button("1 Week", id="range-1-week", color="primary", outline=True),
+                        dbc.Button("1 Month", id="range-1-month", color="primary", outline=True),
+                        dbc.Button("1 Year", id="range-1-year", color="primary", outline=True),
+                    ],
+                    size="sm",  # Adjust size of the buttons
+                    className="mb-3",
                 )
             ),
-            dbc.Col(
+        ),
+
+        # Third Row (Graph)
+        dcc.Loading(
+            id='graph-loader',
+             children=dbc.Row(
                 id="multi-sensor-graph",  # Graphs will be dynamically added here
                 className="g-4",  # Space between rows
-                #dcc.Graph(
-                #    id='multi-sensor-graph',
-                #    config={
-                #        'displayModeBar': False,
-                #        'displaylogo': False
-                #    },
-                #),
-                xs=12, sm=12, md=12, lg=12  # Full width for all screens
             ),
-        ]),
-
-        # EventSource Component
-        EventSource(id='eventsource', url='/eventsource')
-    ], fluid=True)  # Use `fluid=True` for a full-width container
+        )
+    ], fluid=False)  # Use `fluid=True` for a full-width container
 
     return layout
 
