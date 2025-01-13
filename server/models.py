@@ -169,6 +169,24 @@ def get_all_sensors():
         print(f"Error retrieving sensors: {e}")
         return []
 
+def get_sensors_grouped_by_type():
+    """
+    Retrieve all sensors from the database and group them by type.
+
+    Returns:
+        dict: A dictionary where keys are sensor types, and values are lists of sensors of that type.
+    """
+    sensors = get_all_sensors()  # Retrieve sensors from your database
+    grouped_sensors = {}
+
+    for sensor in sensors:
+        device_type = sensor["device_type"]
+        if device_type not in grouped_sensors:
+            grouped_sensors[device_type] = []
+        grouped_sensors[device_type].append(sensor["name"])
+
+    return grouped_sensors
+
 def get_measurement_summary(sensor_name):
     """
     Returns the most recent measurement data for a specific sensor.

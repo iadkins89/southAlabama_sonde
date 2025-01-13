@@ -2,7 +2,13 @@ from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
-from server.models import query_data, save_data_to_csv, get_measurement_summary, query_most_recent_lora, query_lora_data, create_or_update_sensor
+from server.models import (query_data,
+                           save_data_to_csv,
+                           get_measurement_summary,
+                           query_most_recent_lora,
+                           query_lora_data,
+                           create_or_update_sensor,
+                           get_sensors_grouped_by_type)
 from dash import no_update, dcc, html, callback_context
 from urllib.parse import urlparse, parse_qs
 import os
@@ -14,6 +20,45 @@ import base64
 USERNAME = 'admin'
 PASSWORD = 'admin'
 def register_callbacks(app):
+    @app.callback(
+        Output("sensors-dropdown", "children"),
+        Input("sensors-dropdown", "click")
+    )
+    def populate_sensors_dropdown(data):
+        """
+        Populate the sensors dropdown dynamically by querying the database.
+        """
+        # Retrieve sensors grouped by type
+        sensors_grouped = get_sensors_grouped_by_type()
+
+        dropdown_items = []
+        for device_type, sensors in sensors_grouped.items():
+            # Add section header for each device type
+            dropdown_items.append(
+                html.H6(
+                    device_type.replace("_", " ").capitalize(),
+                    style={"fontWeight": "bold", "padding": "5px 10px"}  # Add bold styling and padding
+                )
+            )
+
+            # Add each sensor under the device type
+            for sensor_name in sensors:
+                dropdown_items.append(
+                    dbc.DropdownMenuItem(sensor_name, href=f"/dashboard?name={sensor_name}")
+                )
+
+            # Add a divider between sections
+            dropdown_items.append(dbc.DropdownMenuItem(divider=True))
+
+        # Remove the last divider if present
+        #if dropdown_items and isinstance(dropdown_items[-1], dbc.DropdownMenuItem) and dropdown_items[-1].divider:
+        #    dropdown_items.pop()
+
+        # Fallback if no sensors are found
+        if not dropdown_items:
+            dropdown_items = [dbc.DropdownMenuItem("No sensors available", disabled=True)]
+
+        return dropdown_items
     @app.callback(
         Output('multi-sensor-graph', 'children'),
         [
@@ -264,17 +309,12 @@ def register_callbacks(app):
     @app.callback(
         Output("sensor-image", "src"),
         Input("sensor-name-store", "data"),
-        prevent_initial_call=True
     )
     def get_sensor_pic(sensor_name):
-
         image_path = f"dash_app/assets/{sensor_name}.png"
-        print(os.path.join(os.getcwd(), image_path))
         if os.path.exists(os.path.join(os.getcwd(), image_path)):
-            print(f"image path {image_path}")
-            return f"{image_path}"  # Return the relative path for Dash to render
+            return f"/assets/{sensor_name}.png"  # Return the relative path for Dash to render
         else:
-            print("Default image")
             return "/assets/no_image_available.png"
 
     @app.callback(

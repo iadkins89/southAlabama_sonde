@@ -1,5 +1,5 @@
 .custom-navbar {
-    background-color: #fdefda;  /* Change this color to your preferred background color */
+    background-color: #fdefda;
 }
 
 .DateInput_input, .DateInput_input_1 {
@@ -7,4 +7,9 @@ color: inherit !important;
 font-size: inherit ! important;
 Height: 35px !important;
 Width: 100% !important;
+}
+
+.dropdown-header-bold {
+    font-weight: bold;
+    font-size: 16px;
 }

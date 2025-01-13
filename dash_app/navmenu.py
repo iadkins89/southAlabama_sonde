@@ -1,7 +1,9 @@
 from dash import html
 import dash_bootstrap_components as dbc
+from dash import dcc
 
 def create_menu():
+
 	navmenu = dbc.Navbar(
 	    dbc.Container(
 	        [
@@ -12,7 +14,13 @@ def create_menu():
 	            dbc.Nav(
 	                [
 				        dbc.NavLink("Home", active="exact", href="/"),
-				        dbc.NavLink("Onboard Device", active="exact", href="/onboarding"),
+						dbc.DropdownMenu(
+							label="Sensors",
+							nav=True,
+							id="sensors-dropdown",  # Dropdown ID for dynamic population
+							children=[],  # Placeholder - will be updated dynamically
+						),
+				        dbc.NavLink("Onboard Sensor", active="exact", href="/onboarding"),
 				        dbc.NavLink("About", active="exact", href="/about"),				      
 	                ],
 	                pills=True,
