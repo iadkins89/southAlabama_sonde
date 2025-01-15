@@ -21,6 +21,16 @@ USERNAME = 'admin'
 PASSWORD = 'admin'
 def register_callbacks(app):
     @app.callback(
+        Output("navbar-collapse", "is_open"),
+        Input("navbar-toggler", "n_clicks"),
+        State("navbar-collapse", "is_open"),
+    )
+    def toggle_navbar(n_clicks, is_open):
+        if n_clicks:
+            return not is_open
+        return is_open
+
+    @app.callback(
         Output("sensors-dropdown", "children"),
         Input("sensors-dropdown", "click")
     )
@@ -59,6 +69,42 @@ def register_callbacks(app):
             dropdown_items = [dbc.DropdownMenuItem("No sensors available", disabled=True)]
 
         return dropdown_items
+
+    @app.callback(
+        [
+            Output("range-2-days", "active"),
+            Output("range-1-week", "active"),
+            Output("range-1-month", "active"),
+            Output("range-1-year", "active"),
+        ],
+        [
+            Input("range-2-days", "n_clicks"),
+            Input("range-1-week", "n_clicks"),
+            Input("range-1-month", "n_clicks"),
+            Input("range-1-year", "n_clicks")
+        ]
+    )
+    def update_button_active_status(click_2_days, click_1_week, click_1_month, click_1_year):
+        # Use callback_context to get information about the triggered input
+        ctx = callback_context
+
+        # If no input triggered the callback, return default inactive states
+        if not ctx.triggered:
+            return [False, False, False, False]  # Default: "2 Days" is active
+
+        # Get the ID of the triggered input
+        triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+
+        # Set the active status for the clicked button and make others inactive
+        if triggered_id == "range-2-days":
+            return [True, False, False, False]
+        elif triggered_id == "range-1-week":
+            return [False, True, False, False]
+        elif triggered_id == "range-1-month":
+            return [False, False, True, False]
+        elif triggered_id == "range-1-year":
+            return [False, False, False, True]
+
     @app.callback(
         Output('multi-sensor-graph', 'children'),
         [
@@ -136,12 +182,12 @@ def register_callbacks(app):
                     ],
                     "layout": go.Layout(
                         #title=f"{parameter} vs Time",
-                        xaxis={"title": "Time", "tickangle": -45},
+                        xaxis={"tickangle": -45},
                         yaxis={
-                            "title": parameter,
+                            "title": parameter.replace("_", " ").capitalize(),
                             "range": [min_y - y_padding, max_y + y_padding]  # Apply padding to y-axis
                         },
-                        margin={"l": 40, "r": 40, "t": 40, "b": 80},
+                        margin={"l": 50, "r": 40, "t": 40, "b": 80},
                         font={"size": 12},
                         height=300
                     )
@@ -153,7 +199,7 @@ def register_callbacks(app):
                 },
             )
             graphs.append(dbc.Col(graph, xs=12, sm=12, md=12, lg=12))
-        time.sleep(1)
+        time.sleep(2)
         return graphs
 
     @app.callback(
@@ -250,7 +296,7 @@ def register_callbacks(app):
             [
                 dbc.Row(
                     [
-                        dbc.Col(html.Div(measurement['parameter'], style={'text-align': 'left'}), width=8),
+                        dbc.Col(html.Div(measurement['parameter'].replace("_", " "), style={'text-align': 'left'}), width=8),
                         dbc.Col(html.Div(f"{round(measurement['value'], 1)}", style={'text-align': 'right'}), width=4),
                     ]
                 )

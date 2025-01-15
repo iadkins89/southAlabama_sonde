@@ -1,0 +1,92 @@
+/* Ensure the entire page uses a flexbox layout */
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+}
+
+#app {
+    display: flex;
+    flex-direction: column; /* Stack the header, main content, and footer */
+    min-height: 100vh; /* Ensure the app takes the full height of the viewport */
+}
+
+/* Ensure each page's content fills the remaining space */
+.dash-container {
+    flex: 1;
+}
+
+/* General footer styles */
+#footer {
+    flex-shrink: 0;
+    background-color: #f8f9fa;
+    padding: 10px 0; /* Space around footer content */
+    text-align: center;
+    width: 100%;
+}
+
+/* Footer content layout */
+.footer-content {
+    display: flex;
+    justify-content: space-between; /* Equal spacing between sections */
+    align-items: center;
+    max-width: 1200px; /* Optional: Limit footer width for larger screens */
+    margin: 0 auto; /* Center footer content */
+    padding: 0 20px; /* Add padding around the content */
+}
+
+/* Left section (Address) */
+.footer-left {
+    text-align: left;
+    flex: 1;
+}
+
+/* Middle section (Name and Email) */
+.footer-middle {
+    text-align: center;
+    flex: 1;
+}
+
+/* Reduce margins between <p> elements */
+.footer-middle p,
+.footer-left p {
+    margin: 2px 0; /* Adjust the spacing between lines */
+}
+
+/* Right section (GitHub Link) */
+.footer-right {
+    text-align: right;
+    flex: 1;
+}
+
+/* GitHub icon styling */
+.github-icon {
+    width: 32px; /* Adjust size of the icon */
+    height: auto;
+}
+
+/* Media query for smaller screens (e.g., mobile) */
+@media (max-width: 768px) {
+    /* Footer layout for smaller screens */
+    .footer-content {
+        flex-direction: column; /* Stack sections vertically */
+        text-align: center;
+    }
+    
+    /* Add spacing between sections */
+    .footer-left,
+    .footer-middle,
+    .footer-right {
+        margin-bottom: 10px;
+    }
+    
+    /* Reduce font size for mobile */
+    .footer-left p,
+    .footer-middle p {
+        font-size: 12px; /* Adjust as needed */
+    }
+
+    .footer-left {
+        text-align: center;
+    }
+}

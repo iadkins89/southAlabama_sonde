@@ -61,7 +61,9 @@ def layout(name=None, **other_unknown_query_strings):
                                                         src=f"/assets/{name}.png",  # Default image path
                                                         alt="Sensor Image",
                                                         style={"width": "250px", "height": "auto",
-                                                               "borderRadius": "8px"}  # Adjust style as needed
+                                                               "borderRadius": "8px",
+                                                               "alignItems": "center",
+                                                               "justifyContent": "center"}  # Adjust style as needed
                                                     )
                                                 ],
                                                 style={
@@ -72,7 +74,7 @@ def layout(name=None, **other_unknown_query_strings):
                                                     "height": "100%",  # Ensure the container takes up full height
                                                 }
                                             ),
-                                           ], width="auto",  # Adjust width based on image size
+                                           ], width='auto'
                                         ),
                                     ]
                                 ),
@@ -82,7 +84,7 @@ def layout(name=None, **other_unknown_query_strings):
                         # Footer for the card (unchanged)
                         dbc.CardFooter([
                             dbc.Button("Download Data", id="download-button", size="sm", color="light"),
-                            dbc.Button("Sensor Health", id="sensor-health-button", size="sm", color="info",
+                            dbc.Button("Sensor Health", id="sensor-health-button", size="sm", color="light",
                                        className="ms-2")
                         ]),
 
@@ -146,7 +148,7 @@ def layout(name=None, **other_unknown_query_strings):
             dbc.Col(
                 dbc.ButtonGroup(
                     [
-                        dbc.Button("2 Days", id="range-2-days", color="primary", outline=False, active=True),
+                        dbc.Button("2 Days", id="range-2-days", color="primary", outline=True),
                         dbc.Button("1 Week", id="range-1-week", color="primary", outline=True),
                         dbc.Button("1 Month", id="range-1-month", color="primary", outline=True),
                         dbc.Button("1 Year", id="range-1-year", color="primary", outline=True),
@@ -158,14 +160,14 @@ def layout(name=None, **other_unknown_query_strings):
         ),
 
         # Third Row (Graph)
-        dcc.Loading(
+        dbc.Spinner(
             id='graph-loader',
              children=dbc.Row(
                 id="multi-sensor-graph",  # Graphs will be dynamically added here
                 className="g-4",  # Space between rows
-            ),
+            ), color='primary'
         )
-    ], fluid=False)  # Use `fluid=True` for a full-width container
+    ], fluid=False, className="dash-container")  # Use `fluid=True` for a full-width container
 
     return layout
 

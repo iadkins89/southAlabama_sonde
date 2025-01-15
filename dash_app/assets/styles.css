@@ -13,3 +13,102 @@ Width: 100% !important;
     font-weight: bold;
     font-size: 16px;
 }
+
+/* Add spacing between pills */
+.nav-menu .nav-pill {
+    margin-right: 5px; !important /* Adjust spacing between pills */
+}
+
+/* Adjust hover color for dropdown menu items */
+.nav-menu .dropdown-menu .dropdown-item:hover {
+    background-color: #d3d3d3 !important; /* Light gray hover background */
+    color: #154360 !important; /* Custom text color */
+}
+
+/* Center the nav menu on mobile */
+@media (max-width: 768px) {
+    .custom-navbar .nav-menu {
+        display: flex;
+        justify-content: center; /* Center horizontally */
+        flex-wrap: wrap; /* Allow wrapping if menu items overflow */
+        width: 100%; /* Ensure nav-menu spans the entire width */
+        padding: 0; /* Remove extra padding */
+    }
+
+    .custom-navbar .nav-pill,
+    .custom-navbar .nav-pill-dropdown {
+        margin: 5px; /* Add spacing around each menu item */
+    }
+
+    .custom-navbar .row {
+        flex-direction: column; /* Stack logo and title vertically */
+        text-align: center;
+        width: 100%;
+    }
+
+    .custom-navbar .navbar-brand {
+        text-align: center; /* Center the brand/logo */
+        margin-bottom: 10px;
+    }
+}
+
+.col-auto {
+    width: auto; /* or any value you prefer for larger screens */
+}
+
+@media (max-width: 767px) {
+    .col-auto {
+        width: 100% !important;  /* Override to 100% for mobile */
+    }
+}
+
+/* General mobile styling for smaller devices */
+@media screen and (max-width: 768px) {
+
+    /* Center buttons in the footer */
+    .card-footer {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .card-footer > button {
+        margin: 5px 0; /* Add some spacing between buttons */
+    }
+
+    /* Center the button group for date ranges */
+    .btn-group {
+        justify-content: center;
+        display: flex;
+    }
+
+    .btn-group .btn {
+        margin: 5px; /* Add spacing between buttons */
+    }
+}
+
+
+/*
+.dash-graph {
+    zoom: 0.45;
+  }
+
+  @media (min-width: 475px) {
+    .dash-graph {
+      zoom: 0.6;
+    }
+  }
+
+  @media (min-width: 768px) {
+    .dash-graph {
+      zoom: 0.85;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .dash-graph {
+      zoom: 1;
+    }
+  }
+  */

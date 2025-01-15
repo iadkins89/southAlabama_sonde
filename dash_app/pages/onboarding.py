@@ -89,5 +89,5 @@ def layout():
                 ]),
             ]),
         ])
-    ])
+    ], className="dash-container")
     return layout
