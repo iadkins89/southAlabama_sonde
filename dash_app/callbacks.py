@@ -1,5 +1,6 @@
 from dash.dependencies import Input, Output, State
 from dash.exceptions import PreventUpdate
+import dash
 import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
 from server.models import (query_data,
@@ -8,7 +9,10 @@ from server.models import (query_data,
                            query_most_recent_lora,
                            query_lora_data,
                            create_or_update_sensor,
-                           get_sensors_grouped_by_type)
+                           get_sensors_grouped_by_type,
+                           get_all_sensors,
+                           get_sensor_by_name
+                           )
 from dash import no_update, dcc, html, callback_context
 from urllib.parse import urlparse, parse_qs
 import os
@@ -16,17 +20,24 @@ import time
 from datetime import datetime, timedelta
 import pytz
 import base64
+from flask import session
 
 USERNAME = 'admin'
 PASSWORD = 'admin'
 def register_callbacks(app):
     @app.callback(
         Output("navbar-collapse", "is_open"),
-        Input("navbar-toggler", "n_clicks"),
+        [
+            Input("navbar-toggler", "n_clicks"),
+             Input("home-link", "n_clicks"),
+             Input("onboarding-link", "n_clicks"),
+             Input("about-link", "n_clicks"),
+             Input({"type": "sensor-item", "index": dash.ALL}, "n_clicks")
+         ],
         State("navbar-collapse", "is_open"),
     )
-    def toggle_navbar(n_clicks, is_open):
-        if n_clicks:
+    def toggle_navbar(n_clicks, home_click, onboard_click, about_click, sensor_clicks, is_open):
+        if any([n_clicks, home_click, onboard_click, about_click]) or any(sensor_clicks):
             return not is_open
         return is_open
 
@@ -54,7 +65,11 @@ def register_callbacks(app):
             # Add each sensor under the device type
             for sensor_name in sensors:
                 dropdown_items.append(
-                    dbc.DropdownMenuItem(sensor_name, href=f"/dashboard?name={sensor_name}")
+                    dbc.DropdownMenuItem(
+                        sensor_name,
+                        href=f"/dashboard?name={sensor_name}",
+                        id={"type": "sensor-item", "index": sensor_name}
+                    )
                 )
 
             # Add a divider between sections
@@ -367,20 +382,23 @@ def register_callbacks(app):
         [Output("battery-gauge", "value"),
          Output("battery-gauge", "label"),
          Output("battery-gauge", "color"),
-        Output("rssi-progress", "value"),
-        Output("rssi-progress", "label"),
-        Output("rssi-progress", "color"),
-        Output("snr-progress", "value"),
-        Output("snr-progress", "label"),
-        Output("snr-progress", "color"),],
+         Output("rssi-progress", "value"),
+         Output("rssi-progress", "label"),
+         Output("rssi-progress", "color"),
+         Output("snr-progress", "value"),
+         Output("snr-progress", "label"),
+         Output("snr-progress", "color")],
         [Input("sensor-name-store", "data")]
     )
     def update_sensor_health(sensor_name):
 
         # Query data
         data = query_most_recent_lora(sensor_name)
-        if not data:
-            return html.Div(f"No data available for sensor '{sensor_name}' in the selected date range.")
+
+        # Initialize values
+        battery = None
+        rssi = None
+        snr = None
 
         for entry in data:
             if entry[0] == 'battery':
@@ -390,50 +408,69 @@ def register_callbacks(app):
             if entry[0] == 'snr':
                 snr = entry[2]
 
-        if battery >= 80:
-            battery_color = "success"
-        elif 40 <= battery < 80:
-            battery_color = 'warning'
+        # Handle missing data
+        if battery is None:
+            battery_label = "No battery data available"
+            battery_color = "secondary"  # You can use a different color like gray for unavailable data
         else:
-            battery_color = ('danger'
-                             '')
-        # RSSI transformation and thresholds
-        rssi_transformed = max(0, min(100, int((rssi + 120) * 100 / 120)))  # Map -120 to 0 dBm -> 0 to 100
-        if rssi >= -50:
-            rssi_color = "success"  # Good
-        elif -80 <= rssi < -50:
-            rssi_color = "warning"  # Moderate
-        else:
-            rssi_color = "danger"  # Poor
+            if battery >= 80:
+                battery_color = "success"
+            elif 40 <= battery < 80:
+                battery_color = 'warning'
+            else:
+                battery_color = 'danger'
+            battery_label = f"{battery} %"
 
-        # SNR thresholds
-        snr_transformed = max(0, min(100, int((snr + 20) * 100 / 40)))  # Map -20 to 20 dB -> 0 to 100
-        if snr > 10:
-            snr_color = "success"  # Good
-        elif 0 <= snr <= 10:
-            snr_color = "warning"  # Moderate
+        if rssi is None:
+            rssi_label = "No RSSI data available"
+            rssi_color = "secondary"
         else:
-            snr_color = "danger"  # Poor
+            rssi_transformed = max(0, min(100, int((rssi + 120) * 100 / 120)))  # Map -120 to 0 dBm -> 0 to 100
+            if rssi >= -50:
+                rssi_color = "success"  # Good
+            elif -80 <= rssi < -50:
+                rssi_color = "warning"  # Moderate
+            else:
+                rssi_color = "danger"  # Poor
+            rssi_label = f"{rssi} dBm"
+
+        if snr is None:
+            snr_label = "No SNR data available"
+            snr_color = "secondary"
+        else:
+            snr_transformed = max(0, min(100, int((snr + 20) * 100 / 40)))  # Map -20 to 20 dB -> 0 to 100
+            if snr > 10:
+                snr_color = "success"  # Good
+            elif 0 <= snr <= 10:
+                snr_color = "warning"  # Moderate
+            else:
+                snr_color = "danger"  # Poor
+            snr_label = f"{snr} dB"
 
         # Return updated values, labels, and colors
         return (
-            battery, f"{battery} %", battery_color,
-            rssi_transformed, f"{rssi} dBm", rssi_color,
-            snr_transformed, f"{snr} dB", snr_color,
+            battery if battery is not None else 0, battery_label, battery_color,
+            rssi_transformed if rssi is not None else 0, rssi_label, rssi_color,
+            snr_transformed if snr is not None else 0, snr_label, snr_color,
         )
 
     @app.callback(
         [Output("login-error", "children"),
-         Output("login-form", "style"), Output("onboarding-form", "style")],
+         Output("login-form", "style"),
+         Output("menu", "style")],
         Input("login-btn", "n_clicks"),
         [State("username", "value"), State("password", "value")],
     )
     def login_user(n_clicks, username, password):
+        if session['user_logged_in']:
+            return "", {"display": "none"}, {"display": "block"}
         if n_clicks:
             if username == USERNAME and password == PASSWORD:
+                session['user_logged_in'] = True
                 return "", {"display": "none"}, {"display": "block"}
             return "Invalid credentials. Please try again.", {}, {"display": "none"}
         return "", {}, {"display": "none"}
+
 
     @app.callback(
         Output("submission-response", "children"),
@@ -471,3 +508,59 @@ def register_callbacks(app):
                 return dbc.Alert(message, color="danger")
 
         return ""
+
+    @app.callback(
+        Output("form-container", "style"),
+        [Input("select-device-dropdown", "value")]
+    )
+    def show_form_on_device_select(selected_device):
+        if selected_device:
+            return {"display": "block"}  # Show the form
+        return {"display": "none"}  # Hide the form if no device is selected
+
+    @app.callback(
+        [Output("update-device-name", "value"),
+         Output("update-latitude", "value"),
+         Output("update-longitude", "value"),
+         Output("update-device-type", "value")],
+        [Input("select-device-dropdown", "value")]
+    )
+    def populate_form_with_device_info(selected_device):
+        if selected_device:
+            # Get the sensor details from the database
+            sensor = get_sensor_by_name(selected_device)
+
+            return sensor.name, sensor.latitude, sensor.longitude, sensor.device_type
+        return "", "", "", ""
+
+    """"
+    @app.callback(
+        [
+            Output("login-error", "children"),
+            Output("login-form", "style"),
+            Output("selection-form", "style"),
+        ],
+        Input("login-btn", "n_clicks"),
+        [State("username", "value"), State("password", "value")],
+    )
+    def login_user(n_clicks, username, password):
+        if n_clicks:
+            if username == USERNAME and password == PASSWORD:
+                return "", {"display": "none"}, {"display": "block"}
+            return "Invalid credentials. Please try again.", {}, {"display": "none"}
+        return "", {}, {"display": "none"}
+        
+        
+        @app.callback(
+        [Output("login-error", "children"),
+         Output("login-form", "style"), Output("onboarding-form", "style")],
+        Input("login-btn", "n_clicks"),
+        [State("username", "value"), State("password", "value")],
+    )
+    def login_user(n_clicks, username, password):
+        if n_clicks:
+            if username == USERNAME and password == PASSWORD:
+                return "", {"display": "none"}, {"display": "block"}
+            return "Invalid credentials. Please try again.", {}, {"display": "none"}
+        return "", {}, {"display": "none"}
+"""

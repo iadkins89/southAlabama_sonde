@@ -1,0 +1,14 @@
+/* Make the outer circle of the radio button darker */
+.custom-radio .dcc-radio .custom-control-input:checked ~ .custom-control-label::before {
+    border-color: #333 !important; /* Darker color for the outer circle when checked */
+    background-color: #333 !important; /* Darker inner background when checked */
+}
+
+.custom-radio .dcc-radio .custom-control-input:not(:checked) ~ .custom-control-label::before {
+    border-color: #666 !important; /* Darker color for the outer circle when not checked */
+}
+
+/* Optional: change the hover effect to make it clearer */
+.custom-radio .dcc-radio .custom-control-label:hover::before {
+    border-color: #444 !important; /* Darker border on hover */
+}

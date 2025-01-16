@@ -1,0 +1,80 @@
+/* General Layout */
+
+.sensor-card {
+    height: 100%; /* Ensures the card fills available space */
+    min-height: 45vh; /* Adjust based on your design */
+    display: flex;
+    flex-direction: column; /* Ensures content inside stacks vertically */
+    justify-content: space-between; /* Ensures even spacing between sections */
+}
+
+.dash-container {
+    width: 100%;
+    margin: auto;
+}
+
+/* Summary Content */
+.summary-container {
+    text-align: left;
+}
+
+.summary-text {
+    font-size: 14px;
+}
+
+/* Sensor Image */
+.sensor-image {
+    width: 250px;
+    height: auto;
+    border-radius: 8px;
+}
+
+.image-container {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+/* Progress Bars */
+.progress-bar {
+    height: 20px;
+}
+
+.progress {
+    background-color: #e9ecef; /* Light grey (Bootstrap default) */
+}
+
+.battery-label, .rssi-label, .snr-label {
+    margin-top: 14px;
+}
+
+/* File Input */
+.file-name-label {
+    margin-top: 14px;
+}
+
+.filename-input {
+    margin-bottom: 12px;
+}
+
+.download-csv-btn {
+    margin-top: 12px;
+}
+
+/* Radio Items */
+.radio-items {
+    margin-bottom: 12px;
+}
+
+/* Date Picker Buttons */
+.date-picker-buttons {
+    margin-bottom: 20px;
+}
+
+/* Style for the label inside the progress bar */
+.progress-bar .progress-bar-label {
+    color: #6c757d;  /* Soft gray color for the label text inside the progress bar */
+    font-size: 14px;  /* Optional: Set font size */
+    font-weight: bold;  /* Optional: Set font weight */
+}

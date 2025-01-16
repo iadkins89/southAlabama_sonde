@@ -32,23 +32,23 @@ def layout(name=None, **other_unknown_query_strings):
                     [
                         dbc.CardBody(
                             [
-                                # Create a row for the summary content and image
                                 dbc.Row(
                                     [
                                         # Column for the title and summary content
                                         dbc.Col(
                                             [
                                                 html.H5(id="card-title", className="card-title"),
-                                                        # Dynamically set title
-                                                        html.Div(
-                                                            id="summary-content",
-                                                            children=html.P("Loading summary information...",
-                                                                            className="summary-text"),
-                                                            style={"text-align": "left"}
-                                                        )
-                                                     ],
-                                                        width=True,  # Takes remaining space
+                                                html.Div(
+                                                    id="summary-content",
+                                                    children=html.P(
+                                                        "Loading summary information...",
+                                                        className="summary-text"
                                                     ),
+                                                    className="summary-container"
+                                                )
+                                            ],
+                                            width=True,
+                                        ),
 
                                         # Column for the sensor image
                                         dbc.Col([
@@ -57,38 +57,26 @@ def layout(name=None, **other_unknown_query_strings):
                                                 id="sensor-image-container",
                                                 children=[
                                                     html.Img(
-                                                        id="sensor-image",  # ID to dynamically update the image
-                                                        src=f"/assets/{name}.png",  # Default image path
+                                                        id="sensor-image",
+                                                        src=f"/assets/{name}.png",
                                                         alt="Sensor Image",
-                                                        style={"width": "250px", "height": "auto",
-                                                               "borderRadius": "8px",
-                                                               "alignItems": "center",
-                                                               "justifyContent": "center"}  # Adjust style as needed
+                                                        className="sensor-image"
                                                     )
                                                 ],
-                                                style={
-                                                    "display": "flex",
-                                                    "alignItems": "center",  # Vertically centers the image
-                                                    "justifyContent": "center",
-                                                    # Horizontally centers the image (if needed)
-                                                    "height": "100%",  # Ensure the container takes up full height
-                                                }
+                                                className="image-container"
                                             ),
-                                           ], width='auto'
-                                        ),
+                                        ], width='auto'),
                                     ]
                                 ),
                             ]
                         ),
 
-                        # Footer for the card (unchanged)
                         dbc.CardFooter([
                             dbc.Button("Download Data", id="download-button", size="sm", color="light"),
                             dbc.Button("Sensor Health", id="sensor-health-button", size="sm", color="light",
                                        className="ms-2")
                         ]),
 
-                        # Offcanvas for download options (unchanged)
                         dbc.Offcanvas(
                             html.Div([
                                 html.P("Data Type"),
@@ -96,7 +84,7 @@ def layout(name=None, **other_unknown_query_strings):
                                     ['   Sensor Data', '   LoRaWAN Data'],
                                     '   Sensor Data',
                                     id="radio-data-item",
-                                    style={'margin-bottom': '12px'}
+                                    className="radio-items"
                                 ),
                                 html.P("Date Range"),
                                 dcc.DatePickerRange(
@@ -106,44 +94,48 @@ def layout(name=None, **other_unknown_query_strings):
                                     end_date=cst_today,
                                     stay_open_on_select=True,
                                 ),
-                                html.P("File Name", style={'margin-top': '14px'}),
-                                dbc.Input(id="csv-filename", placeholder="Enter CSV filename",
-                                          style={'margin-bottom': '12px'}),
-                                dbc.Button("Download CSV", id="set-filename-btn", size="sm", color="primary",
-                                           className="mt-2"),
+                                html.P("File Name", className="file-name-label"),
+                                dbc.Input(
+                                    id="csv-filename",
+                                    placeholder="Enter CSV filename",
+                                    className="filename-input"
+                                ),
+                                dbc.Button(
+                                    "Download CSV", id="set-filename-btn", size="sm", color="primary",
+                                    className="download-csv-btn"
+                                ),
                                 dcc.Download(id="download-dataframe-csv"),
                                 dcc.ConfirmDialog(
                                     id='confirm-dialog',
                                     message=''
-                                )]
-                            ),
+                                )
+                            ]),
                             id="download-data-offcanvas",
                             title="Download Options",
                             is_open=False,
                         ),
 
-                        # Offcanvas for sensor health (unchanged)
                         dbc.Offcanvas(
                             html.Div([
-                                html.H5("Battery Level", className="mt-3"),
+                                html.H5("Battery Level", className="battery-label"),
                                 dbc.Progress(id="battery-gauge", value=75, animated=True, striped=True, color="success",
-                                             style={"height": "20px"}),
-                                html.H5("RSSI", className="mt-4"),
-                                dbc.Progress(id="rssi-progress", value=50, color="warning", style={"height": "20px"}),
-                                html.H5("SNR", className="mt-4"),
-                                dbc.Progress(id="snr-progress", value=30, color="danger", style={"height": "20px"}),
+                                             className="progress-bar"),
+                                html.H5("RSSI", className="rssi-label"),
+                                dbc.Progress(id="rssi-progress", value=50, color="warning", className="progress-bar"),
+                                html.H5("SNR", className="snr-label"),
+                                dbc.Progress(id="snr-progress", value=30, color="danger", className="progress-bar"),
                             ]),
                             id="sensor-health-offcanvas",
                             title="Sensor Health",
                             is_open=False,
                         ),
-                    ], style={"height": "100%"}
+                    ],
+                    className="sensor-card"
                 ),
                 xs=12, sm=12, md=12, lg=6
             ),
         ], className="g-3", justify="center"),
 
-        # Second Row (Date Picker)
         dbc.Row(
             dbc.Col(
                 dbc.ButtonGroup(
@@ -153,22 +145,22 @@ def layout(name=None, **other_unknown_query_strings):
                         dbc.Button("1 Month", id="range-1-month", color="primary", outline=True),
                         dbc.Button("1 Year", id="range-1-year", color="primary", outline=True),
                     ],
-                    size="sm",  # Adjust size of the buttons
-                    className="mb-3",
+                    size="sm",
+                    className="date-picker-buttons"
                 )
             ),
         ),
 
-        # Third Row (Graph)
         dbc.Spinner(
             id='graph-loader',
              children=dbc.Row(
-                id="multi-sensor-graph",  # Graphs will be dynamically added here
-                className="g-4",  # Space between rows
+                id="multi-sensor-graph",
+                className="g-4",
             ), color='primary'
         )
-    ], fluid=False, className="dash-container")  # Use `fluid=True` for a full-width container
+    ], fluid=False, className="dash-container")
 
     return layout
+
 
 

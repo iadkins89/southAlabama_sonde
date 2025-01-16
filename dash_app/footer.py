@@ -27,7 +27,7 @@ def create_footer():
                         className="footer-right",
                         children=[
                             html.A(
-                                href="https://github.com/iadkins89/telemetry_dashboard",
+                                href="https://github.com/iadkins89/southAlabama_sonde",
                                 target="_blank",
                                 children=[
                                     html.Img(

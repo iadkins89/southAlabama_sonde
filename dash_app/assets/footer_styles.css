@@ -1,11 +1,4 @@
-/* Ensure the entire page uses a flexbox layout */
-html, body {
-    height: 100%;
-    margin: 0;
-    padding: 0;
-}
-
-#app {
+.app {
     display: flex;
     flex-direction: column; /* Stack the header, main content, and footer */
     min-height: 100vh; /* Ensure the app takes the full height of the viewport */
@@ -14,6 +7,7 @@ html, body {
 /* Ensure each page's content fills the remaining space */
 .dash-container {
     flex: 1;
+    padding-bottom: 20px; /* Optional spacing before the footer */
 }
 
 /* General footer styles */
@@ -23,6 +17,7 @@ html, body {
     padding: 10px 0; /* Space around footer content */
     text-align: center;
     width: 100%;
+    margin-top: auto;
 }
 
 /* Footer content layout */
@@ -30,9 +25,10 @@ html, body {
     display: flex;
     justify-content: space-between; /* Equal spacing between sections */
     align-items: center;
-    max-width: 1200px; /* Optional: Limit footer width for larger screens */
+    max-width: 90%; /* Match width of .dash-container */
     margin: 0 auto; /* Center footer content */
     padding: 0 20px; /* Add padding around the content */
+    box-sizing: border-box; /* Include padding in the element's width */
 }
 
 /* Left section (Address) */
@@ -50,7 +46,7 @@ html, body {
 /* Reduce margins between <p> elements */
 .footer-middle p,
 .footer-left p {
-    margin: 2px 0; /* Adjust the spacing between lines */
+    margin: 0px 0; /* Adjust the spacing between lines */
 }
 
 /* Right section (GitHub Link) */

@@ -6,6 +6,7 @@ def create_menu():
     navmenu = dbc.Navbar(
         dbc.Container(
             [
+                dcc.Store(id="navbar-state", data={"is_open": False}),
                 # Navbar header: logo and title
                 dbc.Row(
                     [
@@ -32,7 +33,7 @@ def create_menu():
                 dbc.Collapse(
                     dbc.Nav(
                         [
-                            dbc.NavLink("Home", active="exact", href="/", className="nav-pill"),
+                            dbc.NavLink("Home", active="exact", href="/", className="nav-pill", id = "home-link"),
                             dbc.DropdownMenu(
                                 label="Sensors",
                                 nav=True,
@@ -41,9 +42,9 @@ def create_menu():
                                 className="nav-pill-dropdown",
                             ),
                             dbc.NavLink(
-                                "Onboard Sensor", active="exact", href="/onboarding", className="nav-pill"
+                                "Onboard Sensor", active="exact", href="/onboarding", className="nav-pill", id="onboarding-link"
                             ),
-                            dbc.NavLink("About", active="exact", href="/about", className="nav-pill"),
+                            dbc.NavLink("About", active="exact", href="/about", className="nav-pill", id="about-link"),
                         ],
                         pills=True,
                         className="nav-menu",

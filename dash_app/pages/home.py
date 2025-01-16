@@ -93,11 +93,12 @@ def get_map_graph(height, l=10, r=10, t=0, b=0):
 
     # Define color mapping for device types
     device_type_colors = {
-        "sonde": "darkblue",
-        "tide_gauge": "seagreen",
-        "wave_gauge": "blue",
-        "other": "goldenrod"  # Default color if no matching type
+        "sonde": "red",  # Mint Green
+        "tide_gauge": "green",  # Aqua Blue
+        "wave_gauge": "blue",  # Coral Orange
+        "other": "orange"  # Lemon Yellow
     }
+
 
     # Create Scattermapbox traces grouped by device type
     traces = []
@@ -115,6 +116,8 @@ def get_map_graph(height, l=10, r=10, t=0, b=0):
                     marker=dict(
                         size=16,
                         color=color,
+                        opacity=0.7
+
                     ),
                     text=[sensor["name"] for sensor in filtered_sensors],
                     hoverinfo="text",
@@ -192,7 +195,7 @@ def layout():
             ),
         ],
         fluid=False,
-        #style={"padding": "0px"}
+        className="dash-container"
     )
 
     return layout
