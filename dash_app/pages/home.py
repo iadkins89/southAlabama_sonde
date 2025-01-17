@@ -93,10 +93,10 @@ def get_map_graph(height, l=10, r=10, t=0, b=0):
 
     # Define color mapping for device types
     device_type_colors = {
-        "sonde": "red",  # Mint Green
-        "tide_gauge": "green",  # Aqua Blue
-        "wave_gauge": "blue",  # Coral Orange
-        "other": "orange"  # Lemon Yellow
+        "sonde": "#D95D39",  # Mint Green
+        "tide_gauge": "#F18805",  # Aqua Blue
+        "wave_gauge": "#F0A202",  # Coral Orange
+        "other": "#0E1428"  # Lemon Yellow
     }
 
 
@@ -116,7 +116,7 @@ def get_map_graph(height, l=10, r=10, t=0, b=0):
                     marker=dict(
                         size=16,
                         color=color,
-                        opacity=0.7
+                        opacity=0.8
 
                     ),
                     text=[sensor["name"] for sensor in filtered_sensors],

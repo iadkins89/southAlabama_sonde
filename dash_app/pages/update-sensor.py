@@ -48,7 +48,16 @@ def layout():
                             lg=8, md=9, sm=12),
                 ], className="mb-3"),
                 dbc.Row([
-                    dbc.Label("Device Type", width=2, className="text-end"),
+                    dbc.Label("Parameter Units", width=2, className="text-end"),
+                    dbc.Col([
+                        # Parameters section
+                        html.Div([
+                            html.Div(id="parameters-container")  # Dynamically populated with parameters
+                        ], className="mb-4"),
+                    ])
+                ]),
+                dbc.Row([
+                    dbc.Label("Device Type", width=2, className="text-end align-self-center"),
                     dbc.Col(
                         dbc.RadioItems(
                             id="update-device-type",
@@ -60,8 +69,8 @@ def layout():
                             ],
                             inline=False,
                             className="custom-radio",
-                        ), width=10, lg=8, md=9, sm=12
-                    ),
+                        ), width=6, lg=4, md=6, sm=12
+                    )
                 ], className="mb-3"),
                 dbc.Row([
                     dbc.Label("Device Image", width=2, className="text-end"),
@@ -96,5 +105,3 @@ def layout():
     ])
 
     return layout
-
-

@@ -13,7 +13,7 @@ def create_server():
 
     # Add session configuration
     server.config["SECRET_KEY"] = "982d1a997ecb712756e836c0a022fd301a04f5bd18debd3e016d53b168a4c0c9"
-    #server.config['PERMANENT_SESSION_LIFETIME'] = timedelta(seconds=30)
+    server.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
     server.config["SESSION_TYPE"] = "filesystem"  # Use server-side session storage
     Session(server)  # Initialize Flask-Session
 
@@ -21,7 +21,7 @@ def create_server():
     def before_request():
         if 'user_logged_in' not in session:
             session['user_logged_in'] = False  # Initialize to False when first visiting the site
-        session.permanent = False  # Enable session permanence
+        session.permanent = True  # Enable session permanence
 
     init_db(server)
     

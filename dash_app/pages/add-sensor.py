@@ -45,7 +45,7 @@ def layout():
                             {"label": "Other", "value": "other"},
                         ],
                         inline=False,
-                        className="mb-3",
+                        className="custom-radio",
                     ), width=10, lg=8, md=9, sm=12
                 ),
             ], className="mb-3"),

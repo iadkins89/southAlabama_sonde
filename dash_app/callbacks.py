@@ -11,7 +11,8 @@ from server.models import (query_data,
                            create_or_update_sensor,
                            get_sensors_grouped_by_type,
                            get_all_sensors,
-                           get_sensor_by_name
+                           get_sensor_by_name,
+                           get_parameters
                            )
 from dash import no_update, dcc, html, callback_context
 from urllib.parse import urlparse, parse_qs
@@ -320,7 +321,7 @@ def register_callbacks(app):
             style={"list-style-type": "none", "padding": "0", "margin": "0"}  # Remove bullet points and extra spacing
         )
 
-        latitude =  str(summary['latitude']) + u'\N{DEGREE SIGN}' + 'N'
+        latitude = str(summary['latitude']) + u'\N{DEGREE SIGN}' + 'N'
         longitude = str(summary['longitude']) + u'\N{DEGREE SIGN}' + 'W'
         location = latitude + "   " + longitude
 
@@ -533,6 +534,39 @@ def register_callbacks(app):
             return sensor.name, sensor.latitude, sensor.longitude, sensor.device_type
         return "", "", "", ""
 
+    @app.callback(
+        Output("parameters-container", "children"),
+        Input("select-device-dropdown", "value")
+    )
+    def populate_form_with_parameters_info(selected_device):
+        if not selected_device:
+            return []
+
+        # Fetch parameters and units for the selected device
+        parameters = get_parameters(selected_device)
+
+        if "error" in parameters:
+            return html.P(parameters["error"], className="text-danger")
+
+        # Define the list of parameters to exclude
+        remove = ['battery', 'rssi', 'snr']
+
+        # Filter out parameters in the 'remove' list
+        filtered_parameters = [param for param in parameters if param[0] not in remove]
+
+        # Create rows for each parameter with its input field
+        return [
+            dbc.Row([
+                dbc.Col(html.Label(param[0]), width=2),  # Parameter name
+                dbc.Col(
+                    dbc.Input(
+                        placeholder=param[1],  # Unit abbreviation
+                        size="sm",  # Small input size
+                        style={"maxWidth": "80px"}  # Limit width to accommodate short units
+                    ), width=4  # Adjust width to balance layout
+                ),
+            ], className="mb-2") for param in filtered_parameters
+        ]
     """"
     @app.callback(
         [

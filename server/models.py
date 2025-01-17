@@ -187,6 +187,21 @@ def get_sensors_grouped_by_type():
 
     return grouped_sensors
 
+def get_parameters(sensor_name):
+    sensor = db.session.query(Sensor).filter(Sensor.name == sensor_name).first()
+    if not sensor:
+        return {"error": f"Sensor '{sensor_name}' not found"}
+
+    # Fetch parameters for this sensor from the parameters table
+    sensor_parameters = (
+        db.session.query(Parameter.name, Parameter.unit)
+        .join(sensor_parameter, sensor_parameter.c.parameter_id == Parameter.id)
+        .filter(sensor_parameter.c.sensor_id == sensor.id)
+        .all()
+    )
+
+    return sensor_parameters
+
 def get_measurement_summary(sensor_name):
     """
     Returns the most recent measurement data for a specific sensor.
@@ -215,13 +230,15 @@ def get_measurement_summary(sensor_name):
     if not parameter_names:
         return {"error": f"No parameters found for sensor '{sensor_name}'"}
 
+    remove = ['battery', 'rssi', 'snr']
     # Fetch the most recent data for each parameter
     recent_data = (
         db.session.query(SensorData.parameter_id, SensorData.value, SensorData.timestamp)
         .join(Sensor)
         .filter(Sensor.name == sensor_name)
+        .filter(Parameter.name not in remove)
         .order_by(desc(SensorData.timestamp))
-        .limit(len(parameter_names)-3)  # Fetch one record per parameter
+        .limit(len(parameter_names) - 3)
         .all()
     )
 

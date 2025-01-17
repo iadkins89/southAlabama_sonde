@@ -29,7 +29,7 @@ def layout():
                 ]),
             ]),
             html.Div(id="menu", style={"display": "none"}, children=[
-                html.H2("Select an Action", className="text-center mt-4"),
+                html.H2("Onboarding Portal", className="text-center mt-4"),
                 dbc.Row([
                     dbc.Col(dbc.Button("Add New Sensor", size='lg', href="/onboarding/add-sensor", color="success", className="mt-2"), width=6, className="text-center"),
                     dbc.Col(dbc.Button("Update Sensor", size='lg', href="/onboarding/update-sensor", color="success", className="mt-2"), width=6, className="text-center"),
