@@ -102,29 +102,42 @@ def get_map_graph(height, l=10, r=10, t=0, b=0):
 
     # Create Scattermapbox traces grouped by device type
     traces = []
-    for device_type, color in device_type_colors.items():
-        # Filter sensors for this device type
-        filtered_sensors = [sensor for sensor in sensors if sensor["device_type"] == device_type]
+    if sensors:
+        for device_type, color in device_type_colors.items():
+            # Filter sensors for this device type
+            filtered_sensors = [sensor for sensor in sensors if sensor["device_type"] == device_type]
 
-        # Add a trace if there are sensors of this type
-        if filtered_sensors:
-            traces.append(
-                go.Scattermapbox(
-                    lat=[sensor["latitude"] for sensor in filtered_sensors],
-                    lon=[sensor["longitude"] for sensor in filtered_sensors],
-                    mode="markers",
-                    marker=dict(
-                        size=16,
-                        color=color,
-                        opacity=0.8
+            # Add a trace if there are sensors of this type
+            if filtered_sensors:
+                traces.append(
+                    go.Scattermapbox(
+                        lat=[sensor["latitude"] for sensor in filtered_sensors],
+                        lon=[sensor["longitude"] for sensor in filtered_sensors],
+                        mode="markers",
+                        marker=dict(
+                            size=16,
+                            color=color,
+                            opacity=0.8
 
-                    ),
-                    text=[sensor["name"] for sensor in filtered_sensors],
-                    hoverinfo="text",
-                    name=device_type.replace("_", " ").capitalize(),  # Legend label
-                    legendgroup=device_type  # Grouping for consistent coloring
+                        ),
+                        text=[sensor["name"] for sensor in filtered_sensors],
+                        hoverinfo="text",
+                        name=device_type.replace("_", " ").capitalize(),  # Legend label
+                        legendgroup=device_type  # Grouping for consistent coloring
+                    )
                 )
+
+    # If no traces, add an empty trace for consistency
+    if not traces:
+        traces.append(
+            go.Scattermapbox(
+                lat=[],
+                lon=[],
+                mode="markers",
+                marker=dict(size=1, opacity=0),  # Invisible marker
+                name="No sensors available",
             )
+        )
 
     # Create the map graph
     map_graph = dcc.Graph(

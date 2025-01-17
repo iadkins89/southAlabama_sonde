@@ -97,9 +97,11 @@ def layout():
                 ], className="mb-3"),
                 dbc.Row([
                     dbc.Col(dbc.Button("Submit", id="update-submit-btn", color="success", className="mt-3"),
-                            width={"size": 4, "offset": 2}),
-                ]),
-                html.Div(id="submission-response", className="mt-3"),
+                            width={"offset": 2}),
+                    dbc.Col(dbc.Button("Deactivate", id="deactivate-btn", color="danger", className="mt-3"),
+                            width={"size": "auto", "offset": 2})
+                ],className="d-flex justify-content-end"),
+                html.Div(id="update-submission-response", className="mt-3"),
             ])
         ])
     ])

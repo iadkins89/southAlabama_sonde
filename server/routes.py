@@ -4,6 +4,41 @@ from .models import Sensor, Parameter, SensorData, LoraData
 from .database import db
 import pytz
 
+
+# Helper function to guess unit
+def guess_unit(param, value):
+    PARAMETER_UNITS = {
+        "temperature": "°C",
+        "pressure": "Pa",
+        "humidity": "%",
+        "velocity": "m/s",
+        "acceleration": "m/s\u00B2",
+        "water_level": "m",
+        "wave_height": "m",
+        "dissolved_oxygen": "mg/L",
+        "conductivity": "µS/cm",
+        "turbidity": "NTU",
+        "ph": "",
+        "rssi": "dBm",
+        "snr": "dB",
+        "battery": "%",
+    }
+    # Check if the parameter name matches a known unit
+    if param in PARAMETER_UNITS:
+        return PARAMETER_UNITS[param]
+
+    # Fallback logic based on value
+    if isinstance(value, int):
+        return "units"  # Generic count
+    elif isinstance(value, float):
+        if 0 <= value <= 1:
+            return ""  # Probabilities or fractions
+        elif value > 1 and value < 1000:
+            return "m"  # Assume distance in meters
+        else:
+            return "unknown"
+    return "unknown"
+
 def setup_routes(server):
     @server.route('/receive_data', methods=['POST'])
     def receive_data():
@@ -43,7 +78,8 @@ def setup_routes(server):
             # Check if the parameter exists in the database
             parameter = Parameter.query.filter_by(name=param).first()
             if not parameter:
-                parameter = Parameter(name=param)
+                guessed_unit = guess_unit(param, value)
+                parameter = Parameter(name=param, unit=guessed_unit)
                 db.session.add(parameter)
                 db.session.commit()
 

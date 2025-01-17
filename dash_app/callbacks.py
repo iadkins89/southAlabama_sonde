@@ -12,7 +12,10 @@ from server.models import (query_data,
                            get_sensors_grouped_by_type,
                            get_all_sensors,
                            get_sensor_by_name,
-                           get_parameters
+                           get_parameters,
+                           update_sensor_parameters,
+                           update_sensor_data,
+                           delete_unused_parameters
                            )
 from dash import no_update, dcc, html, callback_context
 from urllib.parse import urlparse, parse_qs
@@ -44,7 +47,7 @@ def register_callbacks(app):
 
     @app.callback(
         Output("sensors-dropdown", "children"),
-        Input("sensors-dropdown", "click")
+        Input("navbar-state", "data")
     )
     def populate_sensors_dropdown(data):
         """
@@ -77,8 +80,8 @@ def register_callbacks(app):
             dropdown_items.append(dbc.DropdownMenuItem(divider=True))
 
         # Remove the last divider if present
-        #if dropdown_items and isinstance(dropdown_items[-1], dbc.DropdownMenuItem) and dropdown_items[-1].divider:
-        #    dropdown_items.pop()
+        if dropdown_items and isinstance(dropdown_items[-1], dbc.DropdownMenuItem) and dropdown_items[-1].divider:
+           dropdown_items.pop()
 
         # Fallback if no sensors are found
         if not dropdown_items:
@@ -132,7 +135,6 @@ def register_callbacks(app):
         ]
     )
     def update_multi_sensor_graph(n2d, n1w, n1m, n1y, sensor_name):
-        # Determine which button was clicked
         cst = pytz.timezone('America/Chicago')
         cst_today = datetime.now(cst).replace(hour=23, minute=59, second=59)
         start_date = cst_today - timedelta(days=2)
@@ -149,35 +151,26 @@ def register_callbacks(app):
             elif button_id == "range-1-year":
                 start_date = cst_today - timedelta(days=365)
 
-        #Convert datetime to string (needed for query_data)
         start_date_string = start_date.strftime("%Y-%m-%d")
         cst_today_string = cst_today.strftime("%Y-%m-%d")
 
-        # Query data
-        data = query_data(start_date_string, cst_today_string, sensor_name)
+        # Query data with units
+        data = query_data(start_date_string, cst_today_string, sensor_name, include_units=True)
+
         if not data:
             return html.Div(f"No data available for sensor '{sensor_name}' in the selected date range.")
 
-        # Process data into a dictionary grouped by parameter
+        # Process data
         parameter_data = {}
+        parameter_units = {}
         for row in data:
-            timestamp = row.timestamp
-            value = row.value
-            parameter_name = row.name
+            timestamp, value, parameter_name, unit = row.timestamp, row.value, row.name, row.unit
 
             if parameter_name not in parameter_data:
                 parameter_data[parameter_name] = {"timestamps": [], "values": []}
+                parameter_units[parameter_name] = unit
             parameter_data[parameter_name]["timestamps"].append(timestamp)
             parameter_data[parameter_name]["values"].append(value)
-
-        # Sort data by timestamp for each parameter (find better way to do this)
-        for parameter, values in parameter_data.items():
-            sorted_data = sorted(zip(values["timestamps"], values["values"]), key=lambda x: x[0])
-            timestamps_sorted, values_sorted = zip(*sorted_data)
-
-            # Update the parameter data with sorted timestamps and values
-            parameter_data[parameter]["timestamps"] = list(timestamps_sorted)
-            parameter_data[parameter]["values"] = list(values_sorted)
 
         # Generate graphs dynamically
         graphs = []
@@ -185,6 +178,7 @@ def register_callbacks(app):
             min_y = min(values["values"])
             max_y = max(values["values"])
             y_padding = (max_y - min_y) * 0.2
+            unit = parameter_units[parameter]
 
             graph = dcc.Graph(
                 figure={
@@ -197,18 +191,17 @@ def register_callbacks(app):
                         )
                     ],
                     "layout": go.Layout(
-                        #title=f"{parameter} vs Time",
                         xaxis={"tickangle": -45},
                         yaxis={
-                            "title": parameter.replace("_", " ").capitalize(),
-                            "range": [min_y - y_padding, max_y + y_padding]  # Apply padding to y-axis
+                            "title": f"{parameter.replace('_', ' ').capitalize()} ({unit})",
+                            "range": [min_y - y_padding, max_y + y_padding]
                         },
                         margin={"l": 50, "r": 40, "t": 40, "b": 80},
                         font={"size": 12},
                         height=300
                     )
                 },
-                config = {
+                config={
                     "responsive": True,
                     'displayModeBar': False,
                     'displaylogo': False
@@ -239,7 +232,7 @@ def register_callbacks(app):
                 return True, 'Please provide a valid filename.', None
 
             if data_type == "   Sensor Data":
-                data = query_data(start_date, end_date, sensor_name)
+                data = query_data(start_date, end_date, sensor_name, include_units=True)
             else:
                 data = query_lora_data(start_date, end_date, sensor_name)
 
@@ -491,7 +484,7 @@ def register_callbacks(app):
                 return dbc.Alert("Device name, latitude, longitude, and device type fields are required!", color="danger")
 
             # Define the base path for uploads
-            upload_directory = os.path.join(os.getcwd(), "dash_app/assets")  # Replace with your desired directory
+            upload_directory = os.path.join(os.getcwd(), "dash_app/assets")
 
             message = create_or_update_sensor(
                 device_name=device_name,
@@ -567,6 +560,74 @@ def register_callbacks(app):
                 ),
             ], className="mb-2") for param in filtered_parameters
         ]
+
+    @app.callback(
+        Output("update-submission-response", "children"),
+        Input("update-submit-btn", "n_clicks"),
+        [
+            State("select-device-dropdown", "value"),
+            State("update-device-name", "value"),
+            State("update-latitude", "value"),
+            State("update-longitude", "value"),
+            State("update-device-type", "value"),
+            State("update-device-image", "contents"),
+            State("parameters-container", "children"),  # Parameter units input fields
+        ]
+    )
+    def update_sensor_information(n_clicks, selected_device, device_name, latitude, longitude, device_type, image_data,
+                                  parameter_units):
+        if n_clicks:
+            if not all([device_name, latitude, longitude, device_type]):
+                return dbc.Alert("Device name, latitude, longitude, and device type fields are required!",
+                                 color="danger")
+
+            # Get the existing sensor by name
+            sensor = get_sensor_by_name(selected_device)
+
+            if not sensor:
+                return dbc.Alert(f"Sensor '{selected_device}' not found.", color="danger")
+
+            upload_directory = os.path.join(os.getcwd(), "dash_app/assets")
+
+            message = create_or_update_sensor(
+                device_name=device_name,
+                latitude=latitude,
+                longitude=longitude,
+                device_type=device_type,
+                image_data=image_data,
+                base_path=upload_directory
+            )
+
+            # Step 2: Extract updated parameter names and units
+            try:
+                updated_parameters = []
+                for row in parameter_units:
+                    children = row["props"]["children"]
+                    param_name = children[0]["props"]["children"]["props"]["children"]  # Extract parameter name
+                    param_unit = children[1]["props"]["children"]["props"]["placeholder"]  # Extract unit
+                    updated_parameters.append((param_name, param_unit))
+            except Exception as e:
+                return dbc.Alert(f"Error processing parameter units: {str(e)}", color="danger")
+            print(updated_parameters)
+            # Step 3: Update sensor parameters
+            try:
+                update_sensor_parameters(sensor, updated_parameters)
+                update_sensor_data(sensor, updated_parameters)
+            except Exception as e:
+                return dbc.Alert(f"Error updating sensor parameters: {str(e)}", color="danger")
+
+            # Step 4: Delete unused parameters (optional, if implemented)
+            delete_unused_parameters()
+
+            # Step 5: Return success message
+            if "successfully" in message.lower():
+                return dbc.Alert("Sensor information updated successfully!", color="success")
+            else:
+                return dbc.Alert(message, color="danger")
+
+        return ""
+
+
     """"
     @app.callback(
         [
