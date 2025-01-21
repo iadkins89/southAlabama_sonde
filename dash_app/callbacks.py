@@ -17,7 +17,8 @@ from server.models import (query_data,
                            update_sensor_data,
                            delete_unused_parameters
                            )
-from dash import no_update, dcc, html, callback_context
+from dash import no_update, dcc, html, callback_context, ALL
+
 from urllib.parse import urlparse, parse_qs
 import os
 import time
@@ -535,6 +536,95 @@ def register_callbacks(app):
         if not selected_device:
             return []
 
+        parameters = get_parameters(selected_device)
+        if "error" in parameters:
+            return html.P(parameters["error"], className="text-danger")
+
+        remove = ['battery', 'rssi', 'snr']
+        filtered_parameters = [param for param in parameters if param[0] not in remove]
+
+        rows = [
+            dbc.Row([
+                dbc.Col(html.Label(param[0]), width=2),
+                dbc.Col(
+                    dbc.Input(
+                        id={"type": "parameter-input", "index": param[0]},  # Assign unique ID
+                        placeholder=param[1],
+                        size="sm",
+                        style={"maxWidth": "80px"}
+                    ), width=4
+                ),
+            ], className="mb-2") for param in filtered_parameters
+        ]
+
+        # Debugging: Print the generated rows
+        print("Generated Rows:", rows)
+        return rows
+
+    @app.callback(
+        Output("update-submission-response", "children"),
+        Input("update-submit-btn", "n_clicks"),
+        [
+            State("select-device-dropdown", "value"),
+            State("update-device-name", "value"),
+            State("update-latitude", "value"),
+            State("update-longitude", "value"),
+            State("update-device-type", "value"),
+            State("update-device-image", "contents"),
+            State({"type": "parameter-input", "index": ALL}, "value"),  # Capture all dynamic inputs
+            State({"type": "parameter-input", "index": ALL}, "id"),  # Capture all IDs of inputs
+        ]
+    )
+    def update_sensor_information(n_clicks, selected_device, device_name, latitude, longitude, device_type, image_data,
+                                  param_units, param_ids):
+        if not n_clicks:
+            return ""
+
+        if not all([device_name, latitude, longitude, device_type]):
+            return dbc.Alert("Device name, latitude, longitude, and device type fields are required!", color="danger")
+
+        # Debugging: Inspect captured IDs and values
+        print("Captured IDs:", param_ids)
+        print("Captured Values:", param_units)
+
+        # Pair parameter names with their corresponding units
+        updated_parameters = [
+            (param_id["index"], param_unit)
+            for param_id, param_unit in zip(param_ids, param_units)
+            if param_unit is not None
+        ]
+
+        # Debugging: Inspect updated parameters
+        print("Updated Parameters:", updated_parameters)
+
+        if not updated_parameters:
+            return dbc.Alert("No parameter units provided!", color="danger")
+
+        # Get the existing sensor by name
+        sensor = get_sensor_by_name(selected_device)
+        if not sensor:
+            return dbc.Alert(f"Sensor '{selected_device}' not found.", color="danger")
+
+        # Update sensor parameters
+        try:
+            update_sensor_parameters(sensor, updated_parameters)
+            update_sensor_data(sensor, updated_parameters)
+        except Exception as e:
+            return dbc.Alert(f"Error updating sensor parameters: {str(e)}", color="danger")
+
+        #delete_unused_parameters()
+
+        return dbc.Alert("Sensor information updated successfully!", color="success")
+
+    """"
+    @app.callback(
+        Output("parameters-container", "children"),
+        Input("select-device-dropdown", "value")
+    )
+    def populate_form_with_parameters_info(selected_device):
+        if not selected_device:
+            return []
+
         # Fetch parameters and units for the selected device
         parameters = get_parameters(selected_device)
 
@@ -597,18 +687,20 @@ def register_callbacks(app):
                 image_data=image_data,
                 base_path=upload_directory
             )
-
+            print(parameter_units)
             # Step 2: Extract updated parameter names and units
             try:
                 updated_parameters = []
                 for row in parameter_units:
                     children = row["props"]["children"]
                     param_name = children[0]["props"]["children"]["props"]["children"]  # Extract parameter name
-                    param_unit = children[1]["props"]["children"]["props"]["placeholder"]  # Extract unit
+                    param_unit = children[1]["props"]["children"].get("value") # Extract unit
+                    if param_unit is None:
+                        param_unit = children[1]["props"]["children"]["props"]["placeholder"]
                     updated_parameters.append((param_name, param_unit))
             except Exception as e:
                 return dbc.Alert(f"Error processing parameter units: {str(e)}", color="danger")
-            print(updated_parameters)
+
             # Step 3: Update sensor parameters
             try:
                 update_sensor_parameters(sensor, updated_parameters)
@@ -628,7 +720,7 @@ def register_callbacks(app):
         return ""
 
 
-    """"
+   
     @app.callback(
         [
             Output("login-error", "children"),

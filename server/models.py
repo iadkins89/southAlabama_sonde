@@ -363,71 +363,140 @@ def add_parameter_if_not_exists(parameter_name, unit):
 
 def update_sensor_parameters(sensor, updated_parameters):
     """
-    Update the parameters for a given sensor.
+    Update the parameters for a given sensor, while keeping the ones that aren't changed and
+    only updating specific parameters (name and/or unit).
     """
-    # Create a list of existing parameters for the sensor
-    existing_parameters = [param.name for param in sensor.parameters]
-    existing_units = [param.unit for param in sensor.parameters]
+    # Map existing parameters for the sensor (name, unit) -> Parameter object
+    existing_parameters = {(param.name, param.unit): param for param in sensor.parameters}
+    print(f"Existing parameters for sensor '{sensor.name}': {list(existing_parameters.keys())}")
+    print(f"Updated parameters to process: {updated_parameters}")
 
-    # Loop through the updated parameters and add them if necessary
+    # Set to track parameters to retain (those that aren't being updated)
+    parameters_to_retain = set(existing_parameters.keys())
+
+    # Loop through updated parameters to update them
     for param_name, param_unit in updated_parameters:
-        # Check if the parameter already exists, if not, create it
+        # Add or fetch the parameter
         param = add_parameter_if_not_exists(param_name, param_unit)
 
-        # If the parameter isn't already associated with the sensor, add the association
-        if param.name not in existing_parameters and param.unit not in existing_units:
+        # If the parameter is not already associated with the sensor, associate it
+        if (param_name, param_unit) not in existing_parameters:
             sensor.parameters.append(param)
+            parameters_to_retain.add((param_name, param_unit))
+            print(f"Added parameter '{param_name} ({param_unit})' to sensor '{sensor.name}'")
+
+        # If the parameter already exists but has a different unit
+        for (name, unit) in existing_parameters:
+            if name == param_name and unit != param_unit:
+                parameters_to_retain.remove((name, unit))
+
+        print(f"parameters_to_retain: {parameters_to_retain}")
+
+    # Remove any parameters from the sensor that are no longer in the updated list
+    for param in sensor.parameters[:]:  # Copy the list to safely modify it
+        if (param.name, param.unit) not in parameters_to_retain:
+            print(f"Removing outdated parameter '{param.name} ({param.unit})' from sensor '{sensor.name}'")
+            sensor.parameters.remove(param)
 
     db.session.commit()
+    print(f"Final parameters for sensor '{sensor.name}': {[f'{p.name} ({p.unit})' for p in sensor.parameters]}")
+
 
 def update_sensor_data(sensor, updated_parameters):
     """
-    Update the parameter_id in the sensor_data table to reflect the corrected parameter associations
-    for the given sensor.
+    Update the `sensor_data` table to reflect updated parameter associations for the given sensor.
 
     Parameters:
         sensor (Sensor): The sensor object being updated.
         updated_parameters (list of tuples): List of updated parameters as (name, unit).
     """
-    # Fetch existing parameters associated with the sensor
-    parameter_mapping = {param.name: param for param in sensor.parameters}
+    # Create a mapping of existing parameters for the sensor
+    parameter_mapping = {f"{param.name}|{param.unit}": param for param in sensor.parameters}
+    print(f"Parameter mapping for sensor '{sensor.name}': {parameter_mapping}")
 
-    for param_name, param_unit in updated_parameters:
-        # Ensure the parameter exists and is associated with the sensor
-        param = add_parameter_if_not_exists(param_name, param_unit)
-        if param_name not in parameter_mapping:
-            sensor.parameters.append(param)
-            parameter_mapping[param_name] = param
-
-    db.session.commit()
-
-    # Update the sensor_data entries
+    # Query existing `sensor_data` for the sensor
     sensor_data_entries = db.session.query(SensorData).filter_by(sensor_id=sensor.id).all()
+    print(f"Sensor data entries before update: {[(d.id, d.parameter_id, d.value) for d in sensor_data_entries]}")
+
+    # Create a lookup for updated parameters
+    updated_mapping = {f"{name}|{unit}": (name, unit) for name, unit in updated_parameters}
 
     for data in sensor_data_entries:
-        param_name = next(
-            (param.name for param in sensor.parameters if param.id == data.parameter_id),
+        # Fetch the current parameter associated with this `sensor_data` entry
+        current_param = db.session.query(Parameter).filter_by(id=data.parameter_id).first()
+
+        if not current_param:
+            print(f"Warning: Parameter ID {data.parameter_id} not found for SensorData ID {data.id}")
+            continue
+
+        current_key = f"{current_param.name}|{current_param.unit}"
+
+        # Check if the current parameter exists in the updated parameters
+        if current_key in updated_mapping:
+            # If it matches, retain the parameter association
+            continue
+
+        # If the current parameter doesn't match, find the new parameter
+        new_key = next(
+            (key for key in updated_mapping if current_param.name in key),
             None,
         )
-        if param_name in parameter_mapping:
-            new_param = parameter_mapping[param_name]
-            if data.parameter_id != new_param.id:
-                data.parameter_id = new_param.id
-                db.session.add(data)  # Mark the data row for update
 
+        if new_key:
+            new_param = parameter_mapping[new_key]
+            if data.parameter_id != new_param.id:
+                print(
+                    f"Updating SensorData entry (ID: {data.id}) "
+                    f"from parameter_id {data.parameter_id} ({current_param.name}, {current_param.unit}) "
+                    f"to {new_param.id} ({new_param.name}, {new_param.unit})"
+                )
+                data.parameter_id = new_param.id  # Update `parameter_id`
+                db.session.add(data)  # Mark for commit
+
+    # Commit all changes to the database
     db.session.commit()
+    print(f"Sensor data entries after update: {[(d.id, d.parameter_id, d.value) for d in sensor_data_entries]}")
+
 
 def delete_unused_parameters():
     """
-    Delete parameters that are no longer used by any sensor.
+    Delete parameters that are not associated with any sensors.
     """
-    unused_parameters = db.session.query(Parameter).filter(
-        ~Parameter.sensors.any()
-    ).all()
+    unused_parameters = db.session.query(Parameter).filter(~Parameter.sensors.any()).all()
+
+    print(f"Unused parameters: {[f'{p.name} ({p.unit})' for p in unused_parameters]}")
 
     for param in unused_parameters:
+        print(f"Deleting unused parameter: {param.name} ({param.unit})")
         db.session.delete(param)
 
     db.session.commit()
+    print("Unused parameters deleted successfully.")
 
+"""
+def update_sensor_parameters(sensor, updated_parameters):
+  
+    Update the parameters for a given sensor.
+    Ensures that `sensor_parameter` is updated correctly.
+
+    # Fetch existing parameters for the sensor
+    existing_parameters = {(param.name, param.unit): param for param in sensor.parameters}
+
+    print(f"Existing parameters for sensor '{sensor.name}': {list(existing_parameters.keys())}")
+    print(f"Updated parameters to process: {updated_parameters}")
+
+    for param_name, param_unit in updated_parameters:
+        # Add or fetch the parameter
+        param = add_parameter_if_not_exists(param_name, param_unit)
+
+        # Check if the parameter is already associated with the sensor
+        if (param_name, param_unit) not in existing_parameters:
+            sensor.parameters.append(param)  # Add association to `sensor_parameter`
+            print(f"Added parameter '{param_name} ({param_unit})' to sensor '{sensor.name}'")
+        else:
+            print(f"Parameter '{param_name} ({param_unit})' already associated with sensor '{sensor.name}'")
+
+    db.session.commit()
+    print(f"Final parameters for sensor '{sensor.name}': {[f'{p.name} ({p.unit})' for p in sensor.parameters]}")
+"""
 
