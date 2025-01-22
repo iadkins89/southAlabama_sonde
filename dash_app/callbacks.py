@@ -18,7 +18,7 @@ from server.models import (query_data,
                            delete_unused_parameters
                            )
 from dash import no_update, dcc, html, callback_context, ALL
-
+from dateutil.parser import parse as parse_date
 from urllib.parse import urlparse, parse_qs
 import os
 import time
@@ -91,66 +91,26 @@ def register_callbacks(app):
         return dropdown_items
 
     @app.callback(
-        [
-            Output("range-2-days", "active"),
-            Output("range-1-week", "active"),
-            Output("range-1-month", "active"),
-            Output("range-1-year", "active"),
-        ],
-        [
-            Input("range-2-days", "n_clicks"),
-            Input("range-1-week", "n_clicks"),
-            Input("range-1-month", "n_clicks"),
-            Input("range-1-year", "n_clicks")
-        ]
-    )
-    def update_button_active_status(click_2_days, click_1_week, click_1_month, click_1_year):
-        # Use callback_context to get information about the triggered input
-        ctx = callback_context
-
-        # If no input triggered the callback, return default inactive states
-        if not ctx.triggered:
-            return [False, False, False, False]  # Default: "2 Days" is active
-
-        # Get the ID of the triggered input
-        triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
-
-        # Set the active status for the clicked button and make others inactive
-        if triggered_id == "range-2-days":
-            return [True, False, False, False]
-        elif triggered_id == "range-1-week":
-            return [False, True, False, False]
-        elif triggered_id == "range-1-month":
-            return [False, False, True, False]
-        elif triggered_id == "range-1-year":
-            return [False, False, False, True]
-
-    @app.callback(
         Output('multi-sensor-graph', 'children'),
         [
-            Input("range-2-days", "n_clicks"),
-            Input("range-1-week", "n_clicks"),
-            Input("range-1-month", "n_clicks"),
-            Input("range-1-year", "n_clicks"),
+            Input("date-range-radio", "value"),
             Input("sensor-name-store", "data")
         ]
     )
-    def update_multi_sensor_graph(n2d, n1w, n1m, n1y, sensor_name):
+    def update_multi_sensor_graph(date_range_value, sensor_name):
         cst = pytz.timezone('America/Chicago')
         cst_today = datetime.now(cst).replace(hour=23, minute=59, second=59)
         start_date = cst_today - timedelta(days=2)
 
-        ctx = callback_context
-        if ctx.triggered:
-            button_id = ctx.triggered[0]["prop_id"].split(".")[0]
-            if button_id == "range-2-days":
-                start_date = cst_today - timedelta(days=2)
-            elif button_id == "range-1-week":
-                start_date = cst_today - timedelta(weeks=1)
-            elif button_id == "range-1-month":
-                start_date = cst_today - timedelta(weeks=4)
-            elif button_id == "range-1-year":
-                start_date = cst_today - timedelta(days=365)
+        # Determine start date based on selected radio option
+        if date_range_value == "2-days":
+            start_date = cst_today - timedelta(days=2)
+        elif date_range_value == "1-week":
+            start_date = cst_today - timedelta(weeks=1)
+        elif date_range_value == "1-month":
+            start_date = cst_today - timedelta(weeks=4)
+        elif date_range_value == "1-year":
+            start_date = cst_today - timedelta(days=365)
 
         start_date_string = start_date.strftime("%Y-%m-%d")
         cst_today_string = cst_today.strftime("%Y-%m-%d")
@@ -227,6 +187,10 @@ def register_callbacks(app):
         if n_clicks is None:
             raise PreventUpdate
         else:
+            #Converty dates from string to date_time object and set hr/min/sec to get the full days
+            start_date = parse_date(start_date).replace(hour=0, minute=0, second=0)
+            end_date = parse_date(end_date).replace(hour=23, minute=59, second=59)
+
             if not start_date or not end_date:
                 return True, 'Please provide a valid date range and filename.', None
             if not filename:
@@ -235,7 +199,7 @@ def register_callbacks(app):
             if data_type == "   Sensor Data":
                 data = query_data(start_date, end_date, sensor_name, include_units=True)
             else:
-                data = query_lora_data(start_date, end_date, sensor_name)
+                data = query_lora_data(start_date, end_date, sensor_name, include_units=True)
 
             if not data:
                 return True, 'No data found for the given date range.', None
@@ -306,8 +270,8 @@ def register_callbacks(app):
             [
                 dbc.Row(
                     [
-                        dbc.Col(html.Div(measurement['parameter'].replace("_", " "), style={'text-align': 'left'}), width=8),
-                        dbc.Col(html.Div(f"{round(measurement['value'], 1)}", style={'text-align': 'right'}), width=4),
+                        dbc.Col(html.Div(measurement['parameter'].replace("_", " "), style={'text-align': 'left', 'font-size': '14px'}), width=9),
+                        dbc.Col(html.Div(f"{round(measurement['value'], 1)}", style={'text-align': 'right', 'font-size': '14px'}), width=3),
                     ]
                 )
                 for measurement in recent_measurements

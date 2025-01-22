@@ -67,9 +67,32 @@
     margin-bottom: 12px;
 }
 
-/* Date Picker Buttons */
-.date-picker-buttons {
-    margin-bottom: 20px;
+/* Restyle date radio items */
+.radio-group .form-check {
+  padding-left: 0;
+}
+
+.radio-group .btn-group > .form-check:not(:last-child) > .btn {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.radio-group .btn-group > .form-check:not(:first-child) > .btn {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  margin-left: -1px;
+}
+
+.radio-group .btn-group > .form-check > .btn {
+  position: relative;
+  display: inline-block;
+}
+
+.radio-group .btn {
+    font-size: 14px; /* Reduce font size */
+    padding: 0.35rem 0.5rem; /* Adjust padding for smaller buttons */
+    line-height: 1; /* Adjust line height */
+    border-radius: 0.3rem; /* Adjust border radius if needed */
 }
 
 /* Style for the label inside the progress bar */

@@ -23,7 +23,7 @@ def layout(name=None, **other_unknown_query_strings):
             # Column for the map (unchanged)
             dbc.Col(
                 dbc.Card(get_map_graph("50vh", 0, 0, 0, 0)),
-                xs=12, sm=12, md=12, lg=6, className="mb-3"
+                xs=12, sm=12, md=12, lg=6,
             ),
 
             # Column for the sensor card
@@ -138,16 +138,21 @@ def layout(name=None, **other_unknown_query_strings):
 
         dbc.Row(
             dbc.Col(
-                dbc.ButtonGroup(
-                    [
-                        dbc.Button("2 Days", id="range-2-days", color="primary", outline=True),
-                        dbc.Button("1 Week", id="range-1-week", color="primary", outline=True),
-                        dbc.Button("1 Month", id="range-1-month", color="primary", outline=True),
-                        dbc.Button("1 Year", id="range-1-year", color="primary", outline=True),
+                dbc.RadioItems(
+                    id="date-range-radio",
+                    className="btn-group",  # Group styling
+                    inputClassName="btn-check",  # Hidden input style
+                    labelClassName="btn btn-outline-primary",  # Button styling
+                    labelCheckedClassName="active",  # Active button styling
+                    options=[
+                        {"label": "2 Days", "value": "2-days"},
+                        {"label": "1 Week", "value": "1-week"},
+                        {"label": "1 Month", "value": "1-month"},
+                        {"label": "1 Year", "value": "1-year"},
                     ],
-                    size="sm",
-                    className="date-picker-buttons"
-                )
+                    value="2-days",  # Default value
+                ),
+                className="radio-group mt-3",  # Add margin-top for spacing
             ),
         ),
 

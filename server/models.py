@@ -103,16 +103,13 @@ def query_most_recent_lora(sensor_name):
     return result
 # Query function
 def query_data(start_date, end_date, sensor_name, include_units=False):
-    # Convert input dates to datetime objects with appropriate time ranges
-    start_dt = parse_date(start_date).replace(hour=0, minute=0, second=0)
-    end_dt = parse_date(end_date).replace(hour=23, minute=59, second=59)
 
     # Query database
     query = (
         db.session.query(Parameter.name, SensorData.timestamp, SensorData.value)
         .join(Sensor)
         .join(Parameter)
-        .filter(Sensor.name == sensor_name, SensorData.parameter_id == Parameter.id, SensorData.timestamp >= start_dt, SensorData.timestamp <= end_dt)
+        .filter(Sensor.name == sensor_name, SensorData.parameter_id == Parameter.id, SensorData.timestamp >= start_date, SensorData.timestamp <= end_date)
     )
 
     if include_units:
@@ -123,17 +120,19 @@ def query_data(start_date, end_date, sensor_name, include_units=False):
     return result
 
 
-def query_lora_data(start_date, end_date, sensor_name):
-    start_dt = parse_date(start_date).replace(hour=0, minute=0, second=0)
-    end_dt = parse_date(end_date).replace(hour=23, minute=59, second=59)
+def query_lora_data(start_date, end_date, sensor_name, include_units=False):
 
-    result = (
+    query = (
         db.session.query(Parameter.name, LoraData.timestamp, LoraData.value)
         .join(Sensor)
         .join(Parameter)
-        .filter(Sensor.name == sensor_name, LoraData.parameter_id == Parameter.id, LoraData.timestamp >= start_dt, LoraData.timestamp <= end_dt)
-        .all()
+        .filter(Sensor.name == sensor_name, LoraData.parameter_id == Parameter.id, LoraData.timestamp >= start_date, LoraData.timestamp <= end_date)
     )
+
+    if include_units:
+        query = query.add_columns(Parameter.unit)
+
+    result = query.all()
 
     return result
 
