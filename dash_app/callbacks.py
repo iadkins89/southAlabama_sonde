@@ -99,9 +99,6 @@ def register_callbacks(app):
     )
     def update_multi_sensor_graph(date_range_value, sensor_name):
         cst = pytz.timezone('America/Chicago')
-        #cst_today = datetime.now(cst).replace(hour=23, minute=59, second=59)
-        #start_date = cst_today - timedelta(days=2)
-
         cst_today = datetime.now(cst).replace(tzinfo=None)
         start_date = cst_today - timedelta(days=2)
 
@@ -114,11 +111,6 @@ def register_callbacks(app):
             start_date = cst_today - timedelta(weeks=4)
         elif date_range_value == "1-year":
             start_date = cst_today - timedelta(days=365)
-
-        print(f"start_date {start_date}")
-        print(f"cst_today {cst_today}")
-        #start_date_string = start_date.strftime("%Y-%m-%d")
-        #cst_today_string = cst_today.strftime("%Y-%m-%d")
 
         # Query data with units
         data = query_data(start_date, cst_today, sensor_name, include_units=True)
