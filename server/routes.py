@@ -1,6 +1,6 @@
 from flask import request, jsonify
 from datetime import datetime
-from .models import Sensor, Parameter, SensorData, LoraData
+from .models import Sensor, Parameter, SensorData, LoraData, sensor_parameter
 from .database import db
 import pytz
 
@@ -76,7 +76,13 @@ def setup_routes(server):
                 continue
 
             # Check if the parameter exists in the database
-            parameter = Parameter.query.filter_by(name=param).first()
+            parameter = (
+                db.session.query(Parameter)
+                .join(sensor_parameter)
+                .filter(sensor_parameter.c.sensor_id == sensor.id, Parameter.name == param)
+                .first()
+            )
+
             if not parameter:
                 guessed_unit = guess_unit(param, value)
                 parameter = Parameter(name=param, unit=guessed_unit)
