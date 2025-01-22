@@ -99,7 +99,10 @@ def register_callbacks(app):
     )
     def update_multi_sensor_graph(date_range_value, sensor_name):
         cst = pytz.timezone('America/Chicago')
-        cst_today = datetime.now(cst).replace(hour=23, minute=59, second=59)
+        #cst_today = datetime.now(cst).replace(hour=23, minute=59, second=59)
+        #start_date = cst_today - timedelta(days=2)
+
+        cst_today = datetime.now(cst).replace(tzinfo=None)
         start_date = cst_today - timedelta(days=2)
 
         # Determine start date based on selected radio option
@@ -112,11 +115,13 @@ def register_callbacks(app):
         elif date_range_value == "1-year":
             start_date = cst_today - timedelta(days=365)
 
-        start_date_string = start_date.strftime("%Y-%m-%d")
-        cst_today_string = cst_today.strftime("%Y-%m-%d")
+        print(f"start_date {start_date}")
+        print(f"cst_today {cst_today}")
+        #start_date_string = start_date.strftime("%Y-%m-%d")
+        #cst_today_string = cst_today.strftime("%Y-%m-%d")
 
         # Query data with units
-        data = query_data(start_date_string, cst_today_string, sensor_name, include_units=True)
+        data = query_data(start_date, cst_today, sensor_name, include_units=True)
 
         if not data:
             return html.Div(f"No data available for sensor '{sensor_name}' in the selected date range.")
@@ -132,6 +137,14 @@ def register_callbacks(app):
                 parameter_units[parameter_name] = unit
             parameter_data[parameter_name]["timestamps"].append(timestamp)
             parameter_data[parameter_name]["values"].append(value)
+
+        # Sort data by timestamps for each parameter
+        for parameter, values in parameter_data.items():
+            sorted_data = sorted(
+                zip(values["timestamps"], values["values"]),
+                key=lambda x: x[0]
+            )
+            parameter_data[parameter]["timestamps"], parameter_data[parameter]["values"] = zip(*sorted_data)
 
         # Generate graphs dynamically
         graphs = []
@@ -187,7 +200,7 @@ def register_callbacks(app):
         if n_clicks is None:
             raise PreventUpdate
         else:
-            #Converty dates from string to date_time object and set hr/min/sec to get the full days
+            #Convert dates from string to date_time object and set hr/min/sec to get the full days
             start_date = parse_date(start_date).replace(hour=0, minute=0, second=0)
             end_date = parse_date(end_date).replace(hour=23, minute=59, second=59)
 
