@@ -578,8 +578,19 @@ def register_callbacks(app):
 
         # Update sensor parameters
         try:
+            # Define the base path for uploads
+            upload_directory = os.path.join(os.getcwd(), "dash_app/assets")
+
             update_sensor_parameters(sensor, updated_parameters)
             update_sensor_data(sensor, updated_parameters)
+            message = create_or_update_sensor(
+                device_name=device_name,
+                latitude=latitude,
+                longitude=longitude,
+                device_type=device_type,
+                image_data=image_data,
+                base_path=upload_directory
+            )
         except Exception as e:
             return dbc.Alert(f"Error updating sensor parameters: {str(e)}", color="danger")
 
