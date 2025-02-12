@@ -1,5 +1,4 @@
 from flask import Flask, redirect, url_for, request, session
-from flask_session import Session
 from .database import db, init_db
 from .routes import setup_routes
 import os
@@ -14,8 +13,6 @@ def create_server():
     # Add session configuration
     server.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
     server.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
-    server.config["SESSION_TYPE"] = "filesystem"  # Use server-side session storage
-    Session(server)  # Initialize Flask-Session
 
     @server.before_request
     def before_request():
