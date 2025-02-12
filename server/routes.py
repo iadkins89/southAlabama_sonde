@@ -46,9 +46,12 @@ def setup_routes(server):
         sensor_data = request.json
 
         # Extract general sensor information
-        sensor_name = sensor_data.get("name")
-        rssi = sensor_data['hotspots'][0].get('rssi')
-        snr = sensor_data['hotspots'][0].get('snr')
+        sensor_name = sensor_data['deviceInfo']["deviceName"]
+        if not sensor_name:
+            return jsonify({"error": "Sensor name is missing in the payload"}), 400
+
+        rssi = sensor_data['rxInfo'][0].get('rssi')
+        snr = sensor_data['rxInfo'][0].get('snr')
 
         # Retrieve or create the sensor
         sensor = Sensor.query.filter_by(name=sensor_name).first()
@@ -58,10 +61,9 @@ def setup_routes(server):
             db.session.commit()
 
         # Decode the payload and timestamp
-        payload = sensor_data.get("decoded", {}).get("payload", {})
+        payload = sensor_data.get("object", {})
         payload['rssi'] = rssi
         payload['snr'] = snr
-        print(payload)
         unix_timestamp = payload.get("timestamp")
         if not unix_timestamp:
             return jsonify({"error": "Timestamp is missing in the payload"}), 400
