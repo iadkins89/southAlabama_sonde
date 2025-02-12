@@ -6,7 +6,7 @@ import base64
 from werkzeug.security import generate_password_hash, check_password_hash  # For hashing passwords
 from server import db
 import pandas as pd
-from dateutil.parser import parse as parse_date
+from datetime import datetime
 from collections import defaultdict
 from sqlalchemy import desc
 
