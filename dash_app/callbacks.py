@@ -382,7 +382,7 @@ def register_callbacks(app):
                 battery_color = 'warning'
             else:
                 battery_color = 'danger'
-            battery_label = f"{battery} V"
+            battery_label = f"{round(battery,1)} V"
 
         if rssi is None:
             rssi_label = "No RSSI data available"
