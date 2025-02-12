@@ -377,13 +377,13 @@ def register_callbacks(app):
             battery_label = "No battery data available"
             battery_color = "secondary"  # You can use a different color like gray for unavailable data
         else:
-            if battery >= 80:
+            if battery >= 3.7:
                 battery_color = "success"
-            elif 40 <= battery < 80:
+            elif 3.5 <= battery < 3.7:
                 battery_color = 'warning'
             else:
                 battery_color = 'danger'
-            battery_label = f"{battery} %"
+            battery_label = f"{battery} V"
 
         if rssi is None:
             rssi_label = "No RSSI data available"
@@ -514,20 +514,20 @@ def register_callbacks(app):
 
         rows = [
             dbc.Row([
-                dbc.Col(html.Label(param[0]), width=2),
+                # Adjusting the label's width for different screen sizes
+                dbc.Col(html.Label(param[0], className="text-start"), width=12, sm=4, md=3),
+                # Full width on mobile, smaller width on larger screens
                 dbc.Col(
                     dbc.Input(
                         id={"type": "parameter-input", "index": param[0]},  # Assign unique ID
                         placeholder=param[1],
                         size="sm",
-                        style={"maxWidth": "80px"}
-                    ), width=4
+                        style={"maxWidth": "13%"}  # Ensure the input takes full width on mobile
+                    ), width=12, sm=8, md=9, lg=8  # Full width on small screens, adjusted for larger screens
                 ),
             ], className="mb-2") for param in filtered_parameters
         ]
 
-        # Debugging: Print the generated rows
-        print("Generated Rows:", rows)
         return rows
 
     @app.callback(
@@ -584,139 +584,3 @@ def register_callbacks(app):
         #delete_unused_parameters()
 
         return dbc.Alert("Sensor information updated successfully!", color="success")
-
-    """"
-    @app.callback(
-        Output("parameters-container", "children"),
-        Input("select-device-dropdown", "value")
-    )
-    def populate_form_with_parameters_info(selected_device):
-        if not selected_device:
-            return []
-
-        # Fetch parameters and units for the selected device
-        parameters = get_parameters(selected_device)
-
-        if "error" in parameters:
-            return html.P(parameters["error"], className="text-danger")
-
-        # Define the list of parameters to exclude
-        remove = ['battery', 'rssi', 'snr']
-
-        # Filter out parameters in the 'remove' list
-        filtered_parameters = [param for param in parameters if param[0] not in remove]
-
-        # Create rows for each parameter with its input field
-        return [
-            dbc.Row([
-                dbc.Col(html.Label(param[0]), width=2),  # Parameter name
-                dbc.Col(
-                    dbc.Input(
-                        placeholder=param[1],  # Unit abbreviation
-                        size="sm",  # Small input size
-                        style={"maxWidth": "80px"}  # Limit width to accommodate short units
-                    ), width=4  # Adjust width to balance layout
-                ),
-            ], className="mb-2") for param in filtered_parameters
-        ]
-
-    @app.callback(
-        Output("update-submission-response", "children"),
-        Input("update-submit-btn", "n_clicks"),
-        [
-            State("select-device-dropdown", "value"),
-            State("update-device-name", "value"),
-            State("update-latitude", "value"),
-            State("update-longitude", "value"),
-            State("update-device-type", "value"),
-            State("update-device-image", "contents"),
-            State("parameters-container", "children"),  # Parameter units input fields
-        ]
-    )
-    def update_sensor_information(n_clicks, selected_device, device_name, latitude, longitude, device_type, image_data,
-                                  parameter_units):
-        if n_clicks:
-            if not all([device_name, latitude, longitude, device_type]):
-                return dbc.Alert("Device name, latitude, longitude, and device type fields are required!",
-                                 color="danger")
-
-            # Get the existing sensor by name
-            sensor = get_sensor_by_name(selected_device)
-
-            if not sensor:
-                return dbc.Alert(f"Sensor '{selected_device}' not found.", color="danger")
-
-            upload_directory = os.path.join(os.getcwd(), "dash_app/assets")
-
-            message = create_or_update_sensor(
-                device_name=device_name,
-                latitude=latitude,
-                longitude=longitude,
-                device_type=device_type,
-                image_data=image_data,
-                base_path=upload_directory
-            )
-            print(parameter_units)
-            # Step 2: Extract updated parameter names and units
-            try:
-                updated_parameters = []
-                for row in parameter_units:
-                    children = row["props"]["children"]
-                    param_name = children[0]["props"]["children"]["props"]["children"]  # Extract parameter name
-                    param_unit = children[1]["props"]["children"].get("value") # Extract unit
-                    if param_unit is None:
-                        param_unit = children[1]["props"]["children"]["props"]["placeholder"]
-                    updated_parameters.append((param_name, param_unit))
-            except Exception as e:
-                return dbc.Alert(f"Error processing parameter units: {str(e)}", color="danger")
-
-            # Step 3: Update sensor parameters
-            try:
-                update_sensor_parameters(sensor, updated_parameters)
-                update_sensor_data(sensor, updated_parameters)
-            except Exception as e:
-                return dbc.Alert(f"Error updating sensor parameters: {str(e)}", color="danger")
-
-            # Step 4: Delete unused parameters (optional, if implemented)
-            delete_unused_parameters()
-
-            # Step 5: Return success message
-            if "successfully" in message.lower():
-                return dbc.Alert("Sensor information updated successfully!", color="success")
-            else:
-                return dbc.Alert(message, color="danger")
-
-        return ""
-
-
-   
-    @app.callback(
-        [
-            Output("login-error", "children"),
-            Output("login-form", "style"),
-            Output("selection-form", "style"),
-        ],
-        Input("login-btn", "n_clicks"),
-        [State("username", "value"), State("password", "value")],
-    )
-    def login_user(n_clicks, username, password):
-        if n_clicks:
-            if username == USERNAME and password == PASSWORD:
-                return "", {"display": "none"}, {"display": "block"}
-            return "Invalid credentials. Please try again.", {}, {"display": "none"}
-        return "", {}, {"display": "none"}
-        
-        
-        @app.callback(
-        [Output("login-error", "children"),
-         Output("login-form", "style"), Output("onboarding-form", "style")],
-        Input("login-btn", "n_clicks"),
-        [State("username", "value"), State("password", "value")],
-    )
-    def login_user(n_clicks, username, password):
-        if n_clicks:
-            if username == USERNAME and password == PASSWORD:
-                return "", {"display": "none"}, {"display": "block"}
-            return "Invalid credentials. Please try again.", {}, {"display": "none"}
-        return "", {}, {"display": "none"}
-"""

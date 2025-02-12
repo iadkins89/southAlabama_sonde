@@ -119,7 +119,7 @@ def layout(name=None, **other_unknown_query_strings):
                             html.Div([
                                 html.H5("Battery Level", className="battery-label"),
                                 dbc.Progress(id="battery-gauge", value=75, animated=True, striped=True, color="success",
-                                             className="progress-bar"),
+                                             min=3.4, max=4.2, className="progress-bar"),
                                 html.H5("RSSI", className="rssi-label"),
                                 dbc.Progress(id="rssi-progress", value=50, color="warning", className="progress-bar"),
                                 html.H5("SNR", className="snr-label"),

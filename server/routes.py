@@ -15,13 +15,14 @@ def guess_unit(param, value):
         "acceleration": "m/s\u00B2",
         "water_level": "m",
         "wave_height": "m",
+        "depth": "m",
         "dissolved_oxygen": "mg/L",
         "conductivity": "µS/cm",
         "turbidity": "NTU",
         "ph": "",
         "rssi": "dBm",
         "snr": "dB",
-        "battery": "%",
+        "battery": "V",
     }
     # Check if the parameter name matches a known unit
     if param in PARAMETER_UNITS:

@@ -19,22 +19,19 @@ def layout():
         dbc.Button("Back", href="/onboarding", color="secondary", className="mb-4"),
         dbc.Form([
             dbc.Row([
-                dbc.Label("Device Name", width=2, className="text-end"),
-                dbc.Col(dbc.Input(type="text", id="device-name", placeholder="Enter device name"), width=10, lg=8, md=9,
-                        sm=12),
+                dbc.Col(dbc.Label("Device Name", className="text-start text-md-end"), width=12, md=2),
+                dbc.Col(dbc.Input(type="text", id="device-name", placeholder="Enter device name"), width=12, md=10),
             ], className="mb-3"),
             dbc.Row([
-                dbc.Label("Latitude", width=2, className="text-end"),
-                dbc.Col(dbc.Input(type="number", id="latitude", placeholder="Enter latitude"), width=10, lg=8, md=9,
-                        sm=12),
+                dbc.Col(dbc.Label("Latitude", className="text-start text-md-end"), width=12, md=2),
+                dbc.Col(dbc.Input(type="number", id="latitude", placeholder="Enter latitude"), width=12, md=10),
             ], className="mb-3"),
             dbc.Row([
-                dbc.Label("Longitude", width=2, className="text-end"),
-                dbc.Col(dbc.Input(type="number", id="longitude", placeholder="Enter longitude"), width=10, lg=8, md=9,
-                        sm=12),
+                dbc.Col(dbc.Label("Longitude", className="text-start text-md-end"), width=12, md=2),
+                dbc.Col(dbc.Input(type="number", id="longitude", placeholder="Enter longitude"), width=12, md=10),
             ], className="mb-3"),
             dbc.Row([
-                dbc.Label("Device Type", width=2, className="text-end"),
+                dbc.Col(dbc.Label("Device Type", className="text-start text-md-end"), width=12, md=2),
                 dbc.Col(
                     dbc.RadioItems(
                         id="device-type",
@@ -45,12 +42,12 @@ def layout():
                             {"label": "Other", "value": "other"},
                         ],
                         inline=False,
-                        className="custom-radio",
-                    ), width=10, lg=8, md=9, sm=12
+                        className="custom-radio mt-2",
+                    ), width=12, md=10
                 ),
             ], className="mb-3"),
             dbc.Row([
-                dbc.Label("Device Image", width=2, className="text-end"),
+                dbc.Col(dbc.Label("Device Image", className="text-start text-md-end"), width=12, md=2),
                 dbc.Col(
                     dcc.Upload(
                         id="device-image",
@@ -60,8 +57,8 @@ def layout():
                         ]),
                         style={
                             "width": "100%",
-                            "height": "60px",
-                            "lineHeight": "60px",
+                            "height": "80px",
+                            "lineHeight": "80px",
                             "borderWidth": "1px",
                             "borderStyle": "dashed",
                             "borderRadius": "5px",
@@ -69,15 +66,17 @@ def layout():
                             "margin": "10px",
                         },
                         multiple=False,
-                    ), width=10, lg=8, md=9, sm=12
+                    ), width=12, md=10
                 ),
             ], className="mb-3"),
             dbc.Row([
-                dbc.Col(dbc.Button("Submit", id="submit-btn", color="success", className="mt-3"),
-                        width={"size": 4, "offset": 2}),
+                dbc.Col(
+                    dbc.Button("Submit", id="submit-btn", color="success", className="mt-3 w-100"),
+                    width=12, md={"size": 4, "offset": 2},
+                ),
             ]),
             html.Div(id="submission-response", className="mt-3"),
         ]),
-    ])
-
+    ], className="px-3 py-3")
     return layout
+

@@ -12,7 +12,7 @@ def create_server():
     server.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     # Add session configuration
-    server.config["SECRET_KEY"] = "982d1a997ecb712756e836c0a022fd301a04f5bd18debd3e016d53b168a4c0c9"
+    server.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
     server.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
     server.config["SESSION_TYPE"] = "filesystem"  # Use server-side session storage
     Session(server)  # Initialize Flask-Session
