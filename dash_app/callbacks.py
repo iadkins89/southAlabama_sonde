@@ -15,7 +15,8 @@ from server.models import (query_data,
                            get_parameters,
                            update_sensor_parameters,
                            update_sensor_data,
-                           delete_unused_parameters
+                           delete_unused_parameters,
+                           User
                            )
 from dash import no_update, dcc, html, callback_context, ALL
 from dateutil.parser import parse as parse_date
@@ -27,8 +28,6 @@ import pytz
 import base64
 from flask import session
 
-USERNAME = 'admin'
-PASSWORD = 'admin'
 def register_callbacks(app):
     @app.callback(
         Output("navbar-collapse", "is_open"),
@@ -426,15 +425,18 @@ def register_callbacks(app):
         [State("username", "value"), State("password", "value")],
     )
     def login_user(n_clicks, username, password):
-        if session['user_logged_in']:
+        if session.get('user_logged_in'): #Check if the user is already logged in
             return "", {"display": "none"}, {"display": "block"}
         if n_clicks:
-            if username == USERNAME and password == PASSWORD:
+            user = User.authenticate(username, password)
+
+            if user:  # If the user is authenticated
                 session['user_logged_in'] = True
                 return "", {"display": "none"}, {"display": "block"}
-            return "Invalid credentials. Please try again.", {}, {"display": "none"}
-        return "", {}, {"display": "none"}
 
+            return "Invalid credentials. Please try again.", {}, {"display": "none"}
+
+        return "", {}, {"display": "none"}  # Initial state if no clicks
 
     @app.callback(
         Output("submission-response", "children"),

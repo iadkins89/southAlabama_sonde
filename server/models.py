@@ -3,14 +3,40 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.exc import SQLAlchemyError
 import os
 import base64
-from datetime import datetime
+from werkzeug.security import generate_password_hash, check_password_hash  # For hashing passwords
 from server import db
 import pandas as pd
 from dateutil.parser import parse as parse_date
 from collections import defaultdict
 from sqlalchemy import desc
 
+class User(db.Model):
+    __tablename__ = 'user'
 
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    username = db.Column(db.String(150), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def set_password(self, password):
+        """Hashes the password for storage."""
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        """Checks if the provided password matches the stored hash."""
+        return check_password_hash(self.password_hash, password)
+
+    @classmethod
+    def authenticate(cls, username, password):
+        """Authenticate a user based on username and password."""
+        user = cls.query.filter_by(username=username).first()
+        if user and user.check_password(password):
+            return user
+        return None
+
+    def __repr__(self):
+        return f"<User {self.username}>"
 
 # Association table for many-to-many relationship between Sensor and Parameter
 sensor_parameter = Table(
