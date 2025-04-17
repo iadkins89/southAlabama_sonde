@@ -52,10 +52,8 @@ def setup_routes(server):
             if not sensor_name:
                 return jsonify({"error": "Sensor name is missing in the payload"}), 400
 
-            rssi = snr = None
-            if 'rxInfo' in sensor_data and len(sensor_data['rxInfo']) > 0:
-                rssi = sensor_data['rxInfo'][0].get('rssi')
-                snr = sensor_data['rxInfo'][0].get('snr')
+            rssi = sensor_data['rxInfo'][0].get('rssi')
+            snr = sensor_data['rxInfo'][0].get('snr')
 
             # Retrieve or create the sensor
             sensor = Sensor.query.filter_by(name=sensor_name).first()
@@ -82,23 +80,34 @@ def setup_routes(server):
                 if param == "timestamp":
                     continue
 
-                # Check if the parameter exists in the database
-                parameter = (
+                # Check if the parameter exists in the database for this sensor
+                # We want to ensure if the parameter exists for this sensor
+                # but maybe has a unit other than a guessed one that we keep
+                # the correct unit.
+                existing_for_sensor = (
                     db.session.query(Parameter)
                     .join(sensor_parameter)
                     .filter(sensor_parameter.c.sensor_id == sensor.id, Parameter.name == param)
                     .first()
                 )
 
-                if not parameter:
+                if existing_for_sensor:
+                    parameter = existing_for_sensor
+                else:
+                    #Check if this parameter exists for other sensors
                     guessed_unit = guess_unit(param, value)
-                    parameter = Parameter(name=param, unit=guessed_unit)
-                    db.session.add(parameter)
-                    db.session.commit()
+                    parameter = Parameter.query.filter_by(name=param, unit=guessed_unit).first()
 
-                if parameter not in sensor.parameters:
-                    sensor.parameters.append(parameter)
-                    db.session.commit()
+                    if not parameter:
+                        # Create new parameter with this name and guessed unit
+                        parameter = Parameter(name=param, unit=guessed_unit)
+                        db.session.add(parameter)
+                        db.session.commit()
+
+                    # Associate parameter with sensor (safe now)
+                    if parameter not in sensor.parameters:
+                        sensor.parameters.append(parameter)
+                        db.session.commit()
 
                 if param not in ['rssi', 'snr', 'battery']:
                     # Add the sensor data entry
