@@ -94,6 +94,7 @@ def setup_routes(server):
 
             if parameter not in sensor.parameters:
                 sensor.parameters.append(parameter)
+                db.session.commit()
 
             if param not in ['rssi', 'snr', 'battery']:
                 # Add the sensor data entry
