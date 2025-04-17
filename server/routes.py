@@ -44,14 +44,17 @@ def setup_routes(server):
     @server.route('/receive_data', methods=['POST'])
     def receive_data():
         sensor_data = request.json
+        print(sensor_data)
 
         # Extract general sensor information
         sensor_name = sensor_data['deviceInfo']["deviceName"]
         if not sensor_name:
             return jsonify({"error": "Sensor name is missing in the payload"}), 400
 
-        rssi = sensor_data['rxInfo'][0].get('rssi')
-        snr = sensor_data['rxInfo'][0].get('snr')
+        rssi = snr = None
+        if 'rxInfo' in sensor_data and len(sensor_data['rxInfo']) > 0:
+            rssi = sensor_data['rxInfo'][0]['rssi']
+            snr = sensor_data['rxInfo'][0]['snr']
 
         # Retrieve or create the sensor
         sensor = Sensor.query.filter_by(name=sensor_name).first()
