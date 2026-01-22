@@ -1,4 +1,4 @@
-from dash.dependencies import Input, Output, State
+from dash.dependencies import ClientsideFunction, Input, Output, State
 from dash.exceptions import PreventUpdate
 import dash
 import dash_bootstrap_components as dbc
@@ -15,11 +15,11 @@ from server.models import (query_data,
                            get_parameters,
                            update_sensor_parameters,
                            update_sensor_data,
-                           delete_unused_parameters
+                           delete_unused_parameters,
                            )
 from dash import no_update, dcc, html, callback_context, ALL
 from dateutil.parser import parse as parse_date
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlencode
 import os
 import time
 from datetime import datetime, timedelta
@@ -30,6 +30,15 @@ from flask import session
 USERNAME = 'admin'
 PASSWORD = 'admin'
 def register_callbacks(app):
+
+    app.clientside_callback(
+        ClientsideFunction(
+            namespace="clientside",
+            function_name="update_store"
+        ),
+        Output("live-sensor-data", "data"),
+        Input("ws-trigger", "children")
+    )
     @app.callback(
         Output("navbar-collapse", "is_open"),
         [
@@ -91,16 +100,48 @@ def register_callbacks(app):
         return dropdown_items
 
     @app.callback(
+    Output('home-url', 'href'),
+    Input('map-graph', 'clickData')
+    )
+    def home_redirect_on_click(clickData):
+        if clickData:
+            sensor_name = clickData['points'][0]['text']
+
+            # Generate the URL with query string
+            return f"/dashboard?name={sensor_name}"
+        return no_update
+
+    # Callback to handle marker click and redirect
+    @app.callback(
+        [Output('url', 'href'), Output('sensor-name-store', 'data')],
+        Input('map-graph', 'clickData'),
+        prevent_initial_call=True
+    )
+    def redirect_on_click(clickData):
+        if clickData:
+            sensor_name = clickData['points'][0]['text']
+
+            # Generate the URL with query string
+            return f"/dashboard?name={sensor_name}", sensor_name
+        return no_update, no_update
+
+
+    @app.callback(
         Output('multi-sensor-graph', 'children'),
         [
             Input("date-range-radio", "value"),
-            Input("sensor-name-store", "data")
+            Input("sensor-name-store", "data"),
+            Input("live-sensor-data", "data")
         ]
     )
-    def update_multi_sensor_graph(date_range_value, sensor_name):
-        cst = pytz.timezone('America/Chicago')
-        cst_today = datetime.now(cst).replace(tzinfo=None)
+    def update_multi_sensor_graph(date_range_value, sensor_name, live_data):
+
+        cst_today = datetime.utcnow()
         start_date = cst_today - timedelta(days=2)
+        print(f"GRAPH UPDATE TRIGGERED. Sensor: {sensor_name}, Live Data Event: {live_data}")
+
+        if not sensor_name:
+            return html.Div("No sensor selected.")
 
         # Determine start date based on selected radio option
         if date_range_value == "2-days":
@@ -146,25 +187,62 @@ def register_callbacks(app):
             y_padding = (max_y - min_y) * 0.2
             unit = parameter_units[parameter]
 
+            # Get the very last point for the "Live" indicator
+            last_time = values["timestamps"][-1]
+            last_val = values["values"][-1]
+
+            # Check if the last point is older than 24 hours
+            is_active = (datetime.utcnow() - last_time) < timedelta(days=1)
+
+            trace_data = []
+
+            trace_data.append(go.Scatter(
+                x=values["timestamps"],
+                y=values["values"],
+                mode="lines",
+                name="History",
+                line={"color": "#1f77b4", "width": 2, "shape": "spline", "smoothing": 0.3},
+                fill='tozeroy',  # Uncomment for "Area Chart" style
+                fillcolor='rgba(0, 123, 255, 0.1)',
+                # %{y:.2f} = value with 2 decimals
+                # <extra></extra> = removes the side box (name/icon)
+                hovertemplate=f'%{{y:.2f}} {unit}<extra></extra>'
+            ))
+
+            # Live Indicators (Only if active)
+            if is_active:
+                # Halo (Glow)
+                trace_data.append(go.Scatter(
+                    x=[last_time], y=[last_val], mode="markers",
+                    marker={"color": "rgba(220, 53, 69, 0.3)", "size": 25, "line": {"width": 0}},
+                    hoverinfo="skip"  # Never show tooltip for the glow
+                ))
+                # Red Dot
+                trace_data.append(go.Scatter(
+                    x=[last_time], y=[last_val], mode="markers",
+                    marker={"color": "#dc3545", "size": 12, "line": {"width": 2, "color": "white"}},
+                    hoverinfo="skip"  # Skip this too! The Line tooltip already covers this point.
+                ))
+
             graph = dcc.Graph(
                 figure={
-                    "data": [
-                        go.Scatter(
-                            x=values["timestamps"],
-                            y=values["values"],
-                            mode="lines+markers",
-                            name=parameter
-                        )
-                    ],
+                    "data": trace_data,
                     "layout": go.Layout(
-                        xaxis={"tickangle": -45},
+                        uirevision=sensor_name,
+                        template="plotly_white",
+                        xaxis={
+                            "tickangle": -45, "showgrid": True, "gridcolor": "#f0f0f0",
+                            "linecolor": "#dcdcdc", "showline": True
+                        },
                         yaxis={
                             "title": f"{parameter.replace('_', ' ').capitalize()} ({unit})",
-                            "range": [min_y - y_padding, max_y + y_padding]
+                            "range": [min_y - y_padding, max_y + y_padding],
+                            "showgrid": True, "gridcolor": "#f0f0f0",
                         },
-                        margin={"l": 50, "r": 40, "t": 40, "b": 80},
-                        font={"size": 12},
-                        height=300
+                        margin={"l": 60, "r": 40, "t": 40, "b": 80},
+                        height=300,
+                        showlegend=False,
+                        hovermode="x unified"  # Professional vertical line hover
                     )
                 },
                 config={
@@ -174,7 +252,6 @@ def register_callbacks(app):
                 },
             )
             graphs.append(dbc.Col(graph, xs=12, sm=12, md=12, lg=12))
-        time.sleep(2)
         return graphs
 
     @app.callback(
@@ -214,37 +291,12 @@ def register_callbacks(app):
         return False, '', None
 
     @app.callback(
-        Output('home-url', 'href'),
-        Input('map-graph', 'clickData')
-    )
-    def home_redirect_on_click(clickData):
-        if clickData:
-            sensor_name = clickData['points'][0]['text']
-
-            # Generate the URL with query string
-            return f"/dashboard?name={sensor_name}"
-        return no_update
-
-    # Callback to handle marker click and redirect
-    @app.callback(
-        [Output('url', 'href'), Output('sensor-name-store', 'data')],
-        Input('map-graph', 'clickData'),
-        prevent_initial_call=True
-    )
-    def redirect_on_click(clickData):
-        if clickData:
-            sensor_name = clickData['points'][0]['text']
-
-            # Generate the URL with query string
-            return f"/dashboard?name={sensor_name}", sensor_name
-        return no_update, no_update
-
-    @app.callback(
         [Output("card-title", "children"),
          Output("summary-content", "children")],
-        Input("sensor-name-store", "data"),
+        [Input("sensor-name-store", "data"),
+        Input("live-sensor-data", "data")]
     )
-    def update_summary_from_url(sensor_name):
+    def update_summary_from_url(sensor_name, live_data):
         if not sensor_name:
             return "No Sensor Found", html.P("No sensor data was found.", className="text-warning")
 
@@ -584,3 +636,4 @@ def register_callbacks(app):
         #delete_unused_parameters()
 
         return dbc.Alert("Sensor information updated successfully!", color="success")
+

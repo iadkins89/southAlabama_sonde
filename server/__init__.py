@@ -3,6 +3,7 @@ from .database import db, init_db
 from .routes import setup_routes
 import os
 from datetime import timedelta
+from .socketio import socketio
 
 def create_server():
 
@@ -13,6 +14,8 @@ def create_server():
     # Add session configuration
     server.config["SECRET_KEY"] = os.environ.get("SECRET_KEY")
     server.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
+
+    socketio.init_app(server)
 
     @server.before_request
     def before_request():

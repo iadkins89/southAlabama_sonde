@@ -99,7 +99,6 @@ def get_map_graph(height, l=10, r=10, t=0, b=0):
         "other": "#0E1428"  # Lemon Yellow
     }
 
-
     # Create Scattermapbox traces grouped by device type
     traces = []
     if sensors:

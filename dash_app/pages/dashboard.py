@@ -18,6 +18,9 @@ def layout(name=None, **other_unknown_query_strings):
         dcc.Location(id='url', refresh=False),
         dcc.Store(id="sensor-name-store", data=name),
 
+        dcc.Store(id="live-sensor-data"),
+        html.Div(id="ws-trigger", style={"display": "none"}),
+
         # First Row (Map and Info Box)
         dbc.Row([
             # Column for the map (unchanged)
@@ -155,13 +158,9 @@ def layout(name=None, **other_unknown_query_strings):
                 className="radio-group mt-3",  # Add margin-top for spacing
             ),
         ),
-
-        dbc.Spinner(
-            id='graph-loader',
-             children=dbc.Row(
-                id="multi-sensor-graph",
-                className="g-4",
-            ), color='primary'
+        dbc.Row(
+            id="multi-sensor-graph",
+            className="g-4",
         )
     ], fluid=False, className="dash-container")
 

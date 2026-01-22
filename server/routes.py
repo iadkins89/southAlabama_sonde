@@ -3,6 +3,7 @@ from datetime import datetime
 from .models import Sensor, Parameter, SensorData, LoraData, sensor_parameter
 from .database import db
 import pytz
+from .realtime import emit_event
 
 
 # Helper function to guess unit
@@ -78,20 +79,17 @@ def setup_routes(server):
             if param == "timestamp":
                 continue
 
-            # Check if the parameter exists in the database
-            parameter = (
-                db.session.query(Parameter)
-                .join(sensor_parameter)
-                .filter(sensor_parameter.c.sensor_id == sensor.id, Parameter.name == param)
-                .first()
-            )
+            # Try to find the parameter globally first
+            parameter = Parameter.query.filter_by(name=param).first()
 
+            # If it doesn't exist, create it
             if not parameter:
                 guessed_unit = guess_unit(param, value)
                 parameter = Parameter(name=param, unit=guessed_unit)
                 db.session.add(parameter)
                 db.session.commit()
 
+            # Check if parameter is linked to the current sensor
             if parameter not in sensor.parameters:
                 sensor.parameters.append(parameter)
 
@@ -116,6 +114,14 @@ def setup_routes(server):
 
         # Commit all changes
         db.session.commit()
+
+        emit_event("sensor_update", {
+            "sensor": sensor.name,
+            "timestamp": central_time.isoformat(),
+            "payload": payload,
+            "rssi": rssi,
+            "snr": snr
+        })
 
         return jsonify({'message': 'Data received and stored successfully.'}), 200
 
