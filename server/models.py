@@ -226,35 +226,41 @@ def get_measurement_summary(sensor_name):
     if not sensor:
         return {"error": f"Sensor '{sensor_name}' not found"}
 
+    excluded_parameters = ['battery', 'rssi', 'snr']
+
     # Fetch parameters for this sensor
-    sensor_parameters = (
-        db.session.query(Parameter.name, Parameter.unit)
+    relevant_parameters = (
+        db.session.query(Parameter)
         .join(sensor_parameter, sensor_parameter.c.parameter_id == Parameter.id)
         .filter(sensor_parameter.c.sensor_id == sensor.id)
+        .filter(Parameter.name.notin_(excluded_parameters))  # specific SQLAlchemy syntax
         .all()
     )
-    parameter_names = [
-        f"{param.name} ({param.unit})" if param.unit else param.name for param in sensor_parameters
-    ]
 
     # If no parameters are associated with the sensor, return an error
-    if not parameter_names:
+    if not relevant_parameters:
         return {"error": f"No parameters found for sensor '{sensor_name}'"}
 
-    remove = ['battery', 'rssi', 'snr']
+    most_recent_measurements = []
 
     # Fetch the most recent data for each parameter
-    recent_data = (
-        db.session.query(SensorData.parameter_id, SensorData.value, SensorData.timestamp)
-        .join(Sensor)
-        .filter(Sensor.name == sensor_name)
-        .filter(Parameter.name not in remove)
-        .order_by(desc(SensorData.timestamp))
-        .limit(len(parameter_names)-3)
-        .all()
-    )
+    for param in relevant_parameters:
+        latest_record = (
+            db.session.query(SensorData)
+            .filter(SensorData.sensor_id == sensor.id)
+            .filter(SensorData.parameter_id == param.id)
+            .order_by(desc(SensorData.timestamp))
+            .first()  # Grab only the absolute latest one
+        )
 
-    if not recent_data:
+        if latest_record:
+            most_recent_measurements.append({
+                "parameter": f"{param.name} ({param.unit})",
+                "value": latest_record.value,
+                "timestamp": latest_record.timestamp,
+            })
+
+    if not most_recent_measurements:
         return {"message": f"No data available for sensor '{sensor_name}'"}
 
     # Format the output
@@ -262,14 +268,7 @@ def get_measurement_summary(sensor_name):
         "sensor_name": sensor_name,
         "latitude": sensor.latitude,
         "longitude": sensor.longitude,
-        "most_recent_measurements": [
-            {
-                "parameter": f"{db.session.query(Parameter.name).filter(Parameter.id == record.parameter_id).scalar()} ({db.session.query(Parameter.unit).filter(Parameter.id == record.parameter_id).scalar()})",
-                "value": record.value,
-                "timestamp": record.timestamp,
-            }
-            for record in recent_data
-        ],
+        "most_recent_measurements": most_recent_measurements
     }
 
     return summary
