@@ -1,95 +1,172 @@
-from sqlalchemy import distinct, ForeignKey, Table
-from sqlalchemy.orm import relationship
-from sqlalchemy.exc import SQLAlchemyError
-import os
-import base64
-from datetime import datetime
 from server import db
-import pandas as pd
-from dateutil.parser import parse as parse_date
-from collections import defaultdict
-from sqlalchemy import desc
+from sqlalchemy import Index, desc
+from datetime import datetime
 
 
-
-# Association table for many-to-many relationship between Sensor and Parameter
-sensor_parameter = Table(
-    'sensor_parameter',
-    db.Model.metadata,
-    db.Column('sensor_id', db.Integer, ForeignKey('sensor.id'), primary_key=True),
-    db.Column('parameter_id', db.Integer, ForeignKey('parameter.id'), primary_key=True),
-)
 
 # Sensor table
 class Sensor(db.Model):
-    __tablename__ = 'sensor'
+    __tablename__ = 'sensors'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), unique=True, nullable=False)
+    device_type = db.Column(db.String(50))  # 'sonde', 'tide_gauge', etc.
+    latitude = db.Column(db.Float)
+    longitude = db.Column(db.Float)
+    image_url = db.Column(db.String(500), nullable=True)
 
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    name = db.Column(db.String, unique=True, nullable=False)
-    latitude = db.Column(db.Float, nullable=False)
-    longitude = db.Column(db.Float, nullable=False)
-    device_type = db.Column(db.String, nullable=False)
-    image = db.Column(db.String, nullable=True)
-    is_active = db.Column(db.Boolean, nullable=False, default=True)
-
-    # Relationship with sensor_data
-    sensor_data = relationship('SensorData', back_populates='sensor')
-    lora_data = relationship('LoraData', back_populates='sensor')  # Added relationship for LoraData
-
-    # Many-to-many relationship with Parameter
-    parameters = relationship('Parameter', secondary=sensor_parameter, back_populates='sensors')
-
-    def __repr__(self):
-        return f"<Sensor {self.name}>"
+    # Relationship to data (Cascades delete: if sensor is deleted, data is deleted)
+    data = db.relationship("SensorData", back_populates="sensor", cascade="all, delete-orphan")
 
 # Parameter table
 class Parameter(db.Model):
-    __tablename__ = 'parameter'
+    __tablename__ = 'parameters'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), unique=True, nullable=False)  # e.g. "Temperature"
+    canonical_unit = db.Column(db.String(20))  # e.g. "degC"
 
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    name = db.Column(db.String, nullable=False)
-    unit =db.Column(db.String, nullable=True)
-
-    __table_args__ = (db.UniqueConstraint('name', 'unit', name='uix_name_unit'),) #composite unique constraint between name and unit
-
-    # Many-to-many relationship with Sensor
-    sensors = relationship('Sensor', secondary=sensor_parameter, back_populates='parameters')
-    def __repr__(self):
-        return f"<Parameter {self.name}>"
+    data = db.relationship("SensorData", back_populates="parameter")
 
 # SensorData table
 class SensorData(db.Model):
     __tablename__ = 'sensor_data'
-
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    sensor_id = db.Column(db.Integer, ForeignKey('sensor.id'), nullable=False)
+    id = db.Column(db.Integer, primary_key=True)
     timestamp = db.Column(db.DateTime, index=True, nullable=False)
-    parameter_id = db.Column(db.Integer, ForeignKey('parameter.id'), nullable=False)
     value = db.Column(db.Float, nullable=False)
 
-    # Relationships
-    sensor = relationship('Sensor', back_populates='sensor_data')
+    sensor_id = db.Column(db.Integer, db.ForeignKey('sensors.id'), nullable=False)
+    parameter_id = db.Column(db.Integer, db.ForeignKey('parameters.id'), nullable=False)
 
-    def __repr__(self):
-        return f"<SensorData {self.sensor_id} {self.timestamp} {self.parameter_id} {self.value}>"
+    sensor = db.relationship("Sensor", back_populates="data")
+    parameter = db.relationship("Parameter", back_populates="data")
 
-# LoraData table
-class LoraData(db.Model):
-    __tablename__ = 'lora_data'
-
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    sensor_id = db.Column(db.Integer, ForeignKey('sensor.id'), nullable=False)
-    timestamp = db.Column(db.DateTime, index=True, nullable=False)
-    parameter_id = db.Column(db.Integer, ForeignKey('parameter.id'), nullable=False)
-    value = db.Column(db.Float, nullable=False)
-
-    # Relationships
-    sensor = relationship('Sensor', back_populates='lora_data')
-
-    def __repr__(self):
-        return f"<LoraData {self.sensor_id} {self.timestamp} {self.rssi} {self.snr}>"
+    # COMPOSITE INDEX: The secret to speed.
+    __table_args__ = (
+        Index('idx_sensor_param_time', 'sensor_id', 'parameter_id', 'timestamp'),
+    )
 
 
+# ----------------
+# Query functions
+#-----------------
+def get_all_sensors():
+    """Returns a list of all sensors as dictionaries."""
+    sensors = db.session.query(Sensor).all()
+    return [{
+        "name": s.name,
+        "latitude": s.latitude,
+        "longitude": s.longitude,
+        "device_type": s.device_type,
+        "image_url": s.image_url
+    } for s in sensors]
+
+def get_sensor_by_name(name):
+    return db.session.query(Sensor).filter(Sensor.name == name).first()
+
+def create_update_sensor(name, latitude, longitude, device_type, image_url=None):
+    """Creates a new sensor. Does NOT handle parameters (dynamic)."""
+    try:
+        sensor = get_sensor_by_name(name)
+        if sensor:
+            sensor.latitude = latitude
+            sensor.longitude = longitude
+            sensor.device_type = device_type
+
+            if image_url:
+                sensor.image_url = image_url
+
+        new_sensor = Sensor(
+            name=name,
+            latitude=latitude,
+            longitude=longitude,
+            device_type=device_type,
+            image_url=image_url
+        )
+        db.session.add(new_sensor)
+        db.session.commit()
+        return f"Successfully created sensor '{name}'."
+    except Exception as e:
+        db.session.rollback()
+        return f"Database Error: {str(e)}"
+
+def get_measurement_summary(sensor_name):
+    """
+    Fetches the single most recent data this sensor has reported.
+    Excludes sensor health related data
+    """
+    sensor = get_sensor_by_name(sensor_name)
+    if not sensor:
+        return {"error": f"Sensor '{sensor_name}' not found"}
+
+    excluded_parameters = ['battery', 'rssi', 'snr']
+
+    relevant_parameters = (
+        db.session.query(Parameter)
+        .join(SensorData, SensorData.parameter_id == Parameter.id)
+        .filter(SensorData.sensor_id == sensor.id)
+        .all()
+    )
+
+    # Fetch recent data
+    recent_data = (
+        db.session.query(SensorData, Parameter)
+        .join(Parameter, SensorData.parameter_id == Parameter.id)
+        .filter(SensorData.sensor_id == sensor.id)
+        .filter(Parameter.name.notin_(excluded_parameters))
+        .order_by(desc(SensorData.timestamp))
+        .limit(len(relevant_parameters.name))
+        .all()
+    )
+
+    if not recent_data:
+        return {"message": f"No data available for sensor '{sensor_name}'"}
+
+    summary_dict = {}
+
+    for data_row, param_row in recent_data:
+        p_name = param_row.name
+
+        if p_name not in summary_dict:
+            summary_dict[p_name] = {
+                "parameter": f"{p_name} ({param_row.canonical_unit})",
+                "value": data_row.value,
+                "timestamp": data_row.timestamp
+            }
+
+    return {
+        "sensor_name": sensor.name,
+        "latitude": sensor.latitude,
+        "longitude": sensor.longitude,
+        "most_recent_measurements": list(summary_dict.values())
+    }
+
+def query_data(sensor_name, start_date, end_date, lora=False):
+    """
+    Optimized graph query. Returns clean list of dicts.
+    """
+    lora_params = ['rssi', 'snr', 'battery']
+
+    sensor = get_sensor_by_name(sensor_name)
+    if not sensor:
+        return []
+
+    query = (
+        db.session.query(SensorData.timestamp, SensorData.value, Parameter.name, Parameter.canonical_unit)
+        .join(Parameter, SensorData.parameter_id == Parameter.id)
+        .filter(SensorData.sensor_id == sensor.id)
+        .filter(SensorData.timestamp >= start_date)
+        .filter(SensorData.timestamp <= end_date)
+    )
+
+    if lora:
+        query = query.filter(Parameter.name.in_(lora_params))
+    else:
+        query = query.filter(Parameter.name.notin_(lora_params))
+
+    results = query.order_by(SensorData.timestamp).all()
+
+    return results
+
+#----------- OLD -------------------------------
 def query_most_recent_lora(sensor_name):
     result = (
         db.session.query(Parameter.name, LoraData.timestamp, LoraData.value)
