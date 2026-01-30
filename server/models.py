@@ -1,8 +1,35 @@
 from server import db
-from sqlalchemy import Index, desc
+from sqlalchemy import Index, desc, func
 from datetime import datetime
+from collections import defaultdict
+import pandas as pd
+from werkzeug.security import generate_password_hash, check_password_hash
 
+HEALTH_PARAMS = ['Battery', 'RSSI', 'SNR', 'battery', 'rssi', 'snr']
+class User(db.Model):
+    __tablename__ = 'user'
 
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    username = db.Column(db.String(150), unique=True, nullable=False)
+    password_hash = db.Column(db.String(256), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    @classmethod
+    def authenticate(cls, username, password):
+        user = cls.query.filter_by(username=username).first()
+        if user and user.check_password(password):
+            return user
+        return None
+
+    def __repr__(self):
+        return f"<User {self.username}>"
 
 # Sensor table
 class Sensor(db.Model):
@@ -39,11 +66,10 @@ class SensorData(db.Model):
     sensor = db.relationship("Sensor", back_populates="data")
     parameter = db.relationship("Parameter", back_populates="data")
 
-    # COMPOSITE INDEX: The secret to speed.
+    # composite index for speed.
     __table_args__ = (
         Index('idx_sensor_param_time', 'sensor_id', 'parameter_id', 'timestamp'),
     )
-
 
 # ----------------
 # Query functions
@@ -62,10 +88,93 @@ def get_all_sensors():
 def get_sensor_by_name(name):
     return db.session.query(Sensor).filter(Sensor.name == name).first()
 
+def query_data(sensor_name, start_date, end_date, lora=False):
+    """
+    Optimized graph query. Returns clean list of dicts.
+    """
+    sensor = get_sensor_by_name(sensor_name)
+    if not sensor:
+        return []
+
+    query = (
+        db.session.query(
+            SensorData.timestamp.label('timestamp'),
+            SensorData.value.label('value'),
+            Parameter.name.label('name'),
+            Parameter.canonical_unit.label('unit')
+        )
+        .join(Parameter, SensorData.parameter_id == Parameter.id)
+        .filter(SensorData.sensor_id == sensor.id)
+        .filter(SensorData.timestamp >= start_date)
+        .filter(SensorData.timestamp <= end_date)
+    )
+
+    if lora:
+        query = query.filter(Parameter.name.in_(HEALTH_PARAMS))
+    else:
+        query = query.filter(Parameter.name.notin_(HEALTH_PARAMS))
+
+    results = query.order_by(SensorData.timestamp).all()
+
+    return results
+
+
+def get_parameters(sensor_name):
+    """
+    Adapter
+    Used to populate the 'Update Sensor' form.
+    New logic: Query distinct parameters from the data table.
+    """
+    sensor = get_sensor_by_name(sensor_name)
+    if not sensor:
+        return []
+
+    # Find all parameter IDs this sensor has data for
+    param_ids = (
+        db.session.query(SensorData.parameter_id)
+        .filter(SensorData.sensor_id == sensor.id)
+        .distinct()
+    )
+
+    params = (
+        db.session.query(Parameter.name, Parameter.canonical_unit)
+        .filter(Parameter.id.in_(param_ids))
+        .all()
+    )
+    return params
+
+
+def query_lora_data(start_date, end_date, sensor_name, include_units=True):
+    """
+    Deprecated
+    """
+    return query_data(sensor_name, start_date, end_date, lora=True)
+
+def query_most_recent_lora(sensor_name):
+    """
+    ADAPTER: Returns the latest health stats.
+    Format expected: list of tuples/objects like [('battery', val, val), ...]
+    """
+    summary = get_measurement_summary(sensor_name, include_health=True)
+    if "error" in summary:
+        return []
+
+    # Extract just the health metrics
+    targets = ['battery', 'rssi', 'snr']
+    results = []
+
+    for m in summary.get('most_recent_measurements', []):
+        if m['parameter'].lower() in targets:
+            # Format expected by gauge callback: (name, timestamp, value)
+            results.append((m['parameter'].lower(), m['timestamp'], m['value']))
+
+    return results
+
 def create_update_sensor(name, latitude, longitude, device_type, image_url=None):
     """Creates a new sensor. Does NOT handle parameters (dynamic)."""
+    sensor = get_sensor_by_name(name)
+
     try:
-        sensor = get_sensor_by_name(name)
         if sensor:
             sensor.latitude = latitude
             sensor.longitude = longitude
@@ -88,7 +197,7 @@ def create_update_sensor(name, latitude, longitude, device_type, image_url=None)
         db.session.rollback()
         return f"Database Error: {str(e)}"
 
-def get_measurement_summary(sensor_name):
+def get_measurement_summary(sensor_name, include_health=False):
     """
     Fetches the single most recent data this sensor has reported.
     Excludes sensor health related data
@@ -97,28 +206,26 @@ def get_measurement_summary(sensor_name):
     if not sensor:
         return {"error": f"Sensor '{sensor_name}' not found"}
 
-    excluded_parameters = ['battery', 'rssi', 'snr']
-
-    relevant_parameters = (
-        db.session.query(Parameter)
-        .join(SensorData, SensorData.parameter_id == Parameter.id)
+    relevant_count = (
+        db.session.query(func.count(func.distinct(SensorData.parameter_id)))
         .filter(SensorData.sensor_id == sensor.id)
-        .all()
+        .scalar()
     )
 
+    if not relevant_count:
+        return {"message": f"No data available for sensor '{sensor_name}'"}
+
     # Fetch recent data
-    recent_data = (
+    query = (
         db.session.query(SensorData, Parameter)
         .join(Parameter, SensorData.parameter_id == Parameter.id)
         .filter(SensorData.sensor_id == sensor.id)
-        .filter(Parameter.name.notin_(excluded_parameters))
-        .order_by(desc(SensorData.timestamp))
-        .limit(len(relevant_parameters.name))
-        .all()
     )
 
-    if not recent_data:
-        return {"message": f"No data available for sensor '{sensor_name}'"}
+    if not include_health:
+        query = query.filter(Parameter.name.notin_(HEALTH_PARAMS))
+
+    recent_data = query.order_by(desc(SensorData.timestamp)).limit(relevant_count).all()
 
     summary_dict = {}
 
@@ -139,81 +246,6 @@ def get_measurement_summary(sensor_name):
         "most_recent_measurements": list(summary_dict.values())
     }
 
-def query_data(sensor_name, start_date, end_date, lora=False):
-    """
-    Optimized graph query. Returns clean list of dicts.
-    """
-    lora_params = ['rssi', 'snr', 'battery']
-
-    sensor = get_sensor_by_name(sensor_name)
-    if not sensor:
-        return []
-
-    query = (
-        db.session.query(SensorData.timestamp, SensorData.value, Parameter.name, Parameter.canonical_unit)
-        .join(Parameter, SensorData.parameter_id == Parameter.id)
-        .filter(SensorData.sensor_id == sensor.id)
-        .filter(SensorData.timestamp >= start_date)
-        .filter(SensorData.timestamp <= end_date)
-    )
-
-    if lora:
-        query = query.filter(Parameter.name.in_(lora_params))
-    else:
-        query = query.filter(Parameter.name.notin_(lora_params))
-
-    results = query.order_by(SensorData.timestamp).all()
-
-    return results
-
-#----------- OLD -------------------------------
-def query_most_recent_lora(sensor_name):
-    result = (
-        db.session.query(Parameter.name, LoraData.timestamp, LoraData.value)
-        .join(Sensor)
-        .join(Parameter)
-        .filter(Sensor.name == sensor_name, LoraData.parameter_id == Parameter.id)
-        .order_by(desc(LoraData.timestamp))
-        .limit(3)  # Fetch one record per parameter
-        .all()
-    )
-    return result
-# Query function
-def query_data(start_date, end_date, sensor_name, include_units=False):
-
-    # Query database
-    query = (
-        db.session.query(Parameter.name, SensorData.timestamp, SensorData.value)
-        .join(Sensor)
-        .join(Parameter)
-        .filter(Sensor.name == sensor_name, SensorData.parameter_id == Parameter.id, SensorData.timestamp >= start_date, SensorData.timestamp <= end_date)
-    )
-
-    if include_units:
-        query = query.add_columns(Parameter.unit)
-
-    result = query.all()
-
-    return result
-
-
-def query_lora_data(start_date, end_date, sensor_name, include_units=False):
-
-    query = (
-        db.session.query(Parameter.name, LoraData.timestamp, LoraData.value)
-        .join(Sensor)
-        .join(Parameter)
-        .filter(Sensor.name == sensor_name, LoraData.parameter_id == Parameter.id, LoraData.timestamp >= start_date, LoraData.timestamp <= end_date)
-    )
-
-    if include_units:
-        query = query.add_columns(Parameter.unit)
-
-    result = query.all()
-
-    return result
-
-# Save data to CSV
 def save_data_to_csv(data, sensor_name):
     organized_data = defaultdict(dict)
     for parameter, timestamp, value, unit in data:
@@ -232,346 +264,16 @@ def save_data_to_csv(data, sensor_name):
 
     return csv_data
 
+#----------- OLD -------------------------------
 
-def get_all_sensors():
-    """
-    Retrieves all sensors from the database with their names, latitude, longitude, and device types.
+def update_sensor_parameters(*args, **kwargs):
+    print("WARNING: update_sensor_parameters is deprecated in the new schema.")
+    pass
 
-    Returns:
-        list: A list of dictionaries, each containing sensor details.
-    """
-    try:
-        sensors = Sensor.query.all()
-        return [
-            {
-                "name": sensor.name,
-                "latitude": sensor.latitude,
-                "longitude": sensor.longitude,
-                "device_type": sensor.device_type,
-            }
-            for sensor in sensors
-        ]
-    except Exception as e:
-        print(f"Error retrieving sensors: {e}")
-        return []
+def update_sensor_data(*args, **kwargs):
+    print("WARNING: update_sensor_data is deprecated in the new schema.")
+    pass
 
-def get_sensors_grouped_by_type():
-    """
-    Retrieve all sensors from the database and group them by type.
-
-    Returns:
-        dict: A dictionary where keys are sensor types, and values are lists of sensors of that type.
-    """
-    sensors = get_all_sensors()  # Retrieve sensors from your database
-    grouped_sensors = {}
-
-    for sensor in sensors:
-        device_type = sensor["device_type"]
-        if device_type not in grouped_sensors:
-            grouped_sensors[device_type] = []
-        grouped_sensors[device_type].append(sensor["name"])
-
-    return grouped_sensors
-
-def get_parameters(sensor_name):
-    sensor = db.session.query(Sensor).filter(Sensor.name == sensor_name).first()
-    if not sensor:
-        return {"error": f"Sensor '{sensor_name}' not found"}
-
-    # Fetch parameters for this sensor from the parameters table
-    sensor_parameters = (
-        db.session.query(Parameter.name, Parameter.unit)
-        .join(sensor_parameter, sensor_parameter.c.parameter_id == Parameter.id)
-        .filter(sensor_parameter.c.sensor_id == sensor.id)
-        .all()
-    )
-
-    return sensor_parameters
-
-def get_measurement_summary(sensor_name):
-    """
-    Returns the most recent measurement data for a specific sensor.
-
-    Parameters:
-        sensor_name (str): The name of the sensor.
-
-    Returns:
-        dict: A dictionary containing the most recent measurement information.
-    """
-    # Check if the sensor exists
-    sensor = db.session.query(Sensor).filter(Sensor.name == sensor_name).first()
-    if not sensor:
-        return {"error": f"Sensor '{sensor_name}' not found"}
-
-    excluded_parameters = ['battery', 'rssi', 'snr']
-
-    # Fetch parameters for this sensor
-    relevant_parameters = (
-        db.session.query(Parameter)
-        .join(sensor_parameter, sensor_parameter.c.parameter_id == Parameter.id)
-        .filter(sensor_parameter.c.sensor_id == sensor.id)
-        .filter(Parameter.name.notin_(excluded_parameters))  # specific SQLAlchemy syntax
-        .all()
-    )
-
-    # If no parameters are associated with the sensor, return an error
-    if not relevant_parameters:
-        return {"error": f"No parameters found for sensor '{sensor_name}'"}
-
-    most_recent_measurements = []
-
-    # Fetch the most recent data for each parameter
-    for param in relevant_parameters:
-        latest_record = (
-            db.session.query(SensorData)
-            .filter(SensorData.sensor_id == sensor.id)
-            .filter(SensorData.parameter_id == param.id)
-            .order_by(desc(SensorData.timestamp))
-            .first()  # Grab only the absolute latest one
-        )
-
-        if latest_record:
-            most_recent_measurements.append({
-                "parameter": f"{param.name} ({param.unit})",
-                "value": latest_record.value,
-                "timestamp": latest_record.timestamp,
-            })
-
-    if not most_recent_measurements:
-        return {"message": f"No data available for sensor '{sensor_name}'"}
-
-    # Format the output
-    summary = {
-        "sensor_name": sensor_name,
-        "latitude": sensor.latitude,
-        "longitude": sensor.longitude,
-        "most_recent_measurements": most_recent_measurements
-    }
-
-    return summary
-
-
-def get_sensor_by_name(device_name):
-    """Retrieve a sensor by its name."""
-    return db.session.query(Sensor).filter_by(name=device_name).first()
-
-
-def decode_base64(image_data):
-    if "," in image_data:
-        # Split off the metadata prefix
-        _, base64_data = image_data.split(",", 1)
-    else:
-        base64_data = image_data
-
-    # Decode the Base64 string
-    return base64.b64decode(base64_data)
-
-def create_or_update_sensor(device_name, latitude, longitude, device_type, image_data=None, base_path=None):
-    """
-    Create or update a sensor in the database.
-
-    Args:
-        device_name (str): Name of the sensor.
-        latitude (float): Latitude of the sensor.
-        longitude (float): Longitude of the sensor.
-        device_type (str): Type of the sensor.
-        image_data (str, optional): Base64-encoded image data.
-        base_path (str, optional): Base path to save images. Defaults to None.
-
-    Returns:
-        str: Success or error message.
-    """
-    try:
-        # Check if the sensor exists
-        sensor = get_sensor_by_name(device_name)
-
-        if sensor:  # Update existing sensor
-            sensor.latitude = latitude
-            sensor.longitude = longitude
-            sensor.device_type = device_type
-
-            if image_data and base_path:
-                save_path = os.path.join(base_path, f"{device_name}.png")
-                decoded_image = decode_base64(image_data)
-                with open(save_path, "wb") as f:
-                    f.write(decoded_image)
-                sensor.image_path = save_path
-        else:  # Create a new sensor
-            new_sensor = Sensor(
-                name=device_name,
-                latitude=latitude,
-                longitude=longitude,
-                device_type=device_type,
-                image=None
-            )
-
-            if image_data and base_path:
-                save_path = os.path.join(base_path, f"{device_name}.png")
-                decoded_image = decode_base64(image_data)
-                with open(save_path, "wb") as f:
-                    f.write(decoded_image)
-                new_sensor.image_path = save_path
-
-            db.session.add(new_sensor)
-
-        db.session.commit()
-        return f"Sensor '{device_name}' successfully created/updated!"
-    except SQLAlchemyError as e:
-        db.session.rollback()
-        return f"Database error: {str(e)}"
-    except Exception as e:
-        return f"An error occurred: {str(e)}"
-
-def add_parameter_if_not_exists(parameter_name, unit):
-    """
-    Check if a parameter with the given name and unit exists. If not, create it.
-    """
-    existing_parameter = db.session.query(Parameter).filter_by(name=parameter_name, unit=unit).first()
-
-    if not existing_parameter:
-        new_parameter = Parameter(name=parameter_name, unit=unit)
-        db.session.add(new_parameter)
-        db.session.commit()
-
-        return new_parameter  # Return the new parameter
-    return existing_parameter  # Return the existing parameter
-
-def update_sensor_parameters(sensor, updated_parameters):
-    """
-    Update the parameters for a given sensor, while keeping the ones that aren't changed and
-    only updating specific parameters (name and/or unit).
-    """
-    # Map existing parameters for the sensor (name, unit) -> Parameter object
-    existing_parameters = {(param.name, param.unit): param for param in sensor.parameters}
-    print(f"Existing parameters for sensor '{sensor.name}': {list(existing_parameters.keys())}")
-    print(f"Updated parameters to process: {updated_parameters}")
-
-    # Set to track parameters to retain (those that aren't being updated)
-    parameters_to_retain = set(existing_parameters.keys())
-
-    # Loop through updated parameters to update them
-    for param_name, param_unit in updated_parameters:
-        # Add or fetch the parameter
-        param = add_parameter_if_not_exists(param_name, param_unit)
-
-        # If the parameter is not already associated with the sensor, associate it
-        if (param_name, param_unit) not in existing_parameters:
-            sensor.parameters.append(param)
-            parameters_to_retain.add((param_name, param_unit))
-            print(f"Added parameter '{param_name} ({param_unit})' to sensor '{sensor.name}'")
-
-        # If the parameter already exists but has a different unit
-        for (name, unit) in existing_parameters:
-            if name == param_name and unit != param_unit:
-                parameters_to_retain.remove((name, unit))
-
-        print(f"parameters_to_retain: {parameters_to_retain}")
-
-    # Remove any parameters from the sensor that are no longer in the updated list
-    for param in sensor.parameters[:]:  # Copy the list to safely modify it
-        if (param.name, param.unit) not in parameters_to_retain:
-            print(f"Removing outdated parameter '{param.name} ({param.unit})' from sensor '{sensor.name}'")
-            sensor.parameters.remove(param)
-
-    db.session.commit()
-    print(f"Final parameters for sensor '{sensor.name}': {[f'{p.name} ({p.unit})' for p in sensor.parameters]}")
-
-
-def update_sensor_data(sensor, updated_parameters):
-    """
-    Update the `sensor_data` table to reflect updated parameter associations for the given sensor.
-
-    Parameters:
-        sensor (Sensor): The sensor object being updated.
-        updated_parameters (list of tuples): List of updated parameters as (name, unit).
-    """
-    # Create a mapping of existing parameters for the sensor
-    parameter_mapping = {f"{param.name}|{param.unit}": param for param in sensor.parameters}
-    print(f"Parameter mapping for sensor '{sensor.name}': {parameter_mapping}")
-
-    # Query existing `sensor_data` for the sensor
-    sensor_data_entries = db.session.query(SensorData).filter_by(sensor_id=sensor.id).all()
-    print(f"Sensor data entries before update: {[(d.id, d.parameter_id, d.value) for d in sensor_data_entries]}")
-
-    # Create a lookup for updated parameters
-    updated_mapping = {f"{name}|{unit}": (name, unit) for name, unit in updated_parameters}
-
-    for data in sensor_data_entries:
-        # Fetch the current parameter associated with this `sensor_data` entry
-        current_param = db.session.query(Parameter).filter_by(id=data.parameter_id).first()
-
-        if not current_param:
-            print(f"Warning: Parameter ID {data.parameter_id} not found for SensorData ID {data.id}")
-            continue
-
-        current_key = f"{current_param.name}|{current_param.unit}"
-
-        # Check if the current parameter exists in the updated parameters
-        if current_key in updated_mapping:
-            # If it matches, retain the parameter association
-            continue
-
-        # If the current parameter doesn't match, find the new parameter
-        new_key = next(
-            (key for key in updated_mapping if current_param.name in key),
-            None,
-        )
-
-        if new_key:
-            new_param = parameter_mapping[new_key]
-            if data.parameter_id != new_param.id:
-                print(
-                    f"Updating SensorData entry (ID: {data.id}) "
-                    f"from parameter_id {data.parameter_id} ({current_param.name}, {current_param.unit}) "
-                    f"to {new_param.id} ({new_param.name}, {new_param.unit})"
-                )
-                data.parameter_id = new_param.id  # Update `parameter_id`
-                db.session.add(data)  # Mark for commit
-
-    # Commit all changes to the database
-    db.session.commit()
-    print(f"Sensor data entries after update: {[(d.id, d.parameter_id, d.value) for d in sensor_data_entries]}")
-
-
-def delete_unused_parameters():
-    """
-    Delete parameters that are not associated with any sensors.
-    """
-    unused_parameters = db.session.query(Parameter).filter(~Parameter.sensors.any()).all()
-
-    print(f"Unused parameters: {[f'{p.name} ({p.unit})' for p in unused_parameters]}")
-
-    for param in unused_parameters:
-        print(f"Deleting unused parameter: {param.name} ({param.unit})")
-        db.session.delete(param)
-
-    db.session.commit()
-    print("Unused parameters deleted successfully.")
-
-"""
-def update_sensor_parameters(sensor, updated_parameters):
-  
-    Update the parameters for a given sensor.
-    Ensures that `sensor_parameter` is updated correctly.
-
-    # Fetch existing parameters for the sensor
-    existing_parameters = {(param.name, param.unit): param for param in sensor.parameters}
-
-    print(f"Existing parameters for sensor '{sensor.name}': {list(existing_parameters.keys())}")
-    print(f"Updated parameters to process: {updated_parameters}")
-
-    for param_name, param_unit in updated_parameters:
-        # Add or fetch the parameter
-        param = add_parameter_if_not_exists(param_name, param_unit)
-
-        # Check if the parameter is already associated with the sensor
-        if (param_name, param_unit) not in existing_parameters:
-            sensor.parameters.append(param)  # Add association to `sensor_parameter`
-            print(f"Added parameter '{param_name} ({param_unit})' to sensor '{sensor.name}'")
-        else:
-            print(f"Parameter '{param_name} ({param_unit})' already associated with sensor '{sensor.name}'")
-
-    db.session.commit()
-    print(f"Final parameters for sensor '{sensor.name}': {[f'{p.name} ({p.unit})' for p in sensor.parameters]}")
-"""
+def delete_unused_parameters(*args, **kwargs):
+    pass
 
