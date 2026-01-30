@@ -88,6 +88,9 @@ def get_all_sensors():
 def get_sensor_by_name(name):
     return db.session.query(Sensor).filter(Sensor.name == name).first()
 
+def get_param_by_name(name):
+    return db.session.query(Parameter).filter(Parameter.name == name).first()
+
 def query_data(sensor_name, start_date, end_date, lora=False):
     """
     Optimized graph query. Returns clean list of dicts.
