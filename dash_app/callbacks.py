@@ -319,8 +319,14 @@ def register_callbacks(app):
         if "error" in summary:
             return sensor_name, html.P(summary["error"], className="text-danger")
 
+        if "message" in summary:
+            return sensor_name, html.P(summary["message"], className="text-info")
+
         # Prepare content dynamically based on the most recent measurements
         recent_measurements = summary.get("most_recent_measurements", [])
+
+        if not recent_measurements:
+            return sensor_name, html.P("No data received yet.", className="text-warning")
 
         timestamp = recent_measurements[0]["timestamp"].strftime("%a %b %d, %H:%M")
 
@@ -541,7 +547,7 @@ def register_callbacks(app):
                     return dbc.Alert(f"Image upload failed: {e}", color="danger")
 
             message = create_or_update_sensor(
-                device_name=device_name,
+                name=device_name,
                 latitude=latitude,
                 longitude=longitude,
                 device_type=device_type,

@@ -33,7 +33,7 @@ def parse_lora_message(sensor_data):
         return{
             "sensor_name": sensor_name,
             "timestamp": central_time,
-            "measurement": payload,
+            "measurements": payload,
             "lat": None,
             "lon": None
         }

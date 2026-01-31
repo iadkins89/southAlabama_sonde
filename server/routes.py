@@ -13,7 +13,8 @@ from server.parser import parse_lora_message, parse_iridium_message
 
 
 # Helper function to guess unit
-def guess_unit(param, value):
+def guess_unit(param_name):
+    param = param_name.lower()
     PARAMETER_UNITS = {
         "temperature": "°C",
         "pressure": "Pa",
@@ -31,21 +32,7 @@ def guess_unit(param, value):
         "snr": "dB",
         "battery": "V",
     }
-    # Check if the parameter name matches a known unit
-    if param in PARAMETER_UNITS:
-        return PARAMETER_UNITS[param]
-
-    # Fallback logic based on value
-    if isinstance(value, int):
-        return "units"  # Generic count
-    elif isinstance(value, float):
-        if 0 <= value <= 1:
-            return ""  # Probabilities or fractions
-        elif value > 1 and value < 1000:
-            return "m"  # Assume distance in meters
-        else:
-            return "unknown"
-    return "unknown"
+    return PARAMETER_UNITS.get(param, "")
 
 def setup_routes(server):
     @server.route('/receive_data', methods=['POST'])
@@ -95,7 +82,11 @@ def setup_routes(server):
         new_data = [] #dictionary to emit
 
         for param_name, param_value in measurements.items():
-            if param_value is None: continue
+            if param_name.lower() == 'timestamp':
+                continue
+
+            if param_value is None:
+                continue
 
             #Find the parameter or create it if it is new
             parameter = get_param_by_name(param_name)
@@ -125,7 +116,7 @@ def setup_routes(server):
             #Real time data
             emit_event("sensor_update", {
                 "sensor": sensor.name,
-                "timestamp": timestamp.isformat(),
+                "timestamp": timestamp.isoformat(),
                 "measurements": new_data
             })
 
