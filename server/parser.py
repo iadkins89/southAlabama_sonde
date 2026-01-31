@@ -1,5 +1,7 @@
 from datetime import datetime
 import pytz
+import base64
+import struct
 
 def parse_lora_message(sensor_data):
     """
@@ -39,48 +41,56 @@ def parse_lora_message(sensor_data):
         print(f"Lora parsing error: {e}")
         return None
 
-def parse_iridium_message(payload):
+def parse_iridium_message(sensor_data):
     """
-    Parses Iridium (Certus/RockBLOCK) JSON payloads.
+    Parses Iridium JSON payloads.
     """
     try:
-        # 1. Identity
-        imei = payload.get('identity', {}).get('hardware', {}).get('imei')
+        # Indentify sensor
+        imei = sensor_data.get('identity', {}).get('hardware', {}).get('imei')
         if not imei: return None
 
         sensor_name = f"iridium_{imei}"
 
-        # 2. Timestamp
-        t = payload.get('receivedAt', {})
-        if t:
+        # Get timestamp
+        time = sensor_data.get('receivedAt', {})
+        if time:
             timestamp = datetime(
-                year=t.get('year'), month=t.get('month'), day=t.get('day'),
-                hour=t.get('hour'), minute=t.get('minute'), second=t.get('second'),
+                year=time.get('year'), month=time.get('month'), day=time.get('day'),
+                hour=time.get('hour'), minute=time.get('minute'), second=time.get('second'),
                 tzinfo=pytz.utc
             )
         else:
             timestamp = datetime.utcnow().replace(tzinfo=pytz.utc)
 
-        # 3. Location
-        # Check 'location' wrapper first (common in Iridium JSONs)
-        location = payload.get('location', {})
+        # Grab lat/long
+        location = sensor_data.get('imt', {})
         lat = location.get('lat')
         lon = location.get('lon')
 
-        # 4. Measurements (The payload data)
-        # Assuming 'data' contains the dictionary of values
-        measurements = payload.get('data', {})
+        #Decode payload
+        b64_string = sensor_data.get('data') or sensor_data.get('message')
 
-        # If Lat/Lon came inside the hex payload (not the wrapper), extract it here
-        if not lat and 'latitude' in measurements:
-            lat = measurements['latitude']
-        if not lon and 'longitude' in measurements:
-            lon = measurements['longitude']
+        payload = {}
+
+        if b64_string:
+            try:
+                raw = base64.b64decode(b64_string)
+
+                do, ec, ph, temp = struct.unpack('<4f', raw)
+
+                payload['dissolved oxygen'] = do
+                payload['conductivity'] = ec
+                payload['pH'] = ph
+                payload['temperature'] = temp
+
+            except Exception as e:
+                print(f"Binary Decoding Failed: {e}")
 
         return {
             "sensor_name": sensor_name,
             "timestamp": timestamp,
-            "measurements": measurements,
+            "measurements": payload,
             "lat": lat,
             "lon": lon
         }

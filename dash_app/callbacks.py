@@ -13,6 +13,7 @@ from server.models import (query_data,
                            get_all_sensors,
                            get_sensor_by_name,
                            get_parameters,
+                    # These are deprecated but kept for import safety
                            update_sensor_parameters,
                            update_sensor_data,
                            delete_unused_parameters,
@@ -29,6 +30,17 @@ from flask import session
 
 USERNAME = 'admin'
 PASSWORD = 'admin'
+
+def get_sensors_grouped_by_type():
+    sensors = get_all_sensors()
+    grouped = {}
+    for s in sensors:
+        d_type = s.get('device_type', 'Unknown')
+        if d_type not in grouped:
+            grouped[d_type] = []
+        grouped[d_type].append(s['name'])
+    return grouped
+
 def register_callbacks(app):
 
     app.clientside_callback(
@@ -154,7 +166,7 @@ def register_callbacks(app):
             start_date = cst_today - timedelta(days=365)
 
         # Query data with units
-        data = query_data(start_date, cst_today, sensor_name, include_units=True)
+        data = query_data(sensor_name, start_date, cst_today, lora=False)
 
         if not data:
             return html.Div(f"No data available for sensor '{sensor_name}' in the selected date range.")
@@ -162,6 +174,7 @@ def register_callbacks(app):
         # Process data
         parameter_data = {}
         parameter_units = {}
+
         for row in data:
             timestamp, value, parameter_name, unit = row.timestamp, row.value, row.name, row.unit
 
@@ -279,9 +292,9 @@ def register_callbacks(app):
                 return True, 'Please provide a valid filename.', None
 
             if data_type == "   Sensor Data":
-                data = query_data(start_date, end_date, sensor_name, include_units=True)
+                data = query_data(sensor_name, start_date, end_date, lora=False)
             else:
-                data = query_lora_data(start_date, end_date, sensor_name, include_units=True)
+                data = query_lora_data(sensor_name,start_date, end_date, lora=True)
 
             if not data:
                 return True, 'No data found for the given date range.', None
@@ -505,16 +518,34 @@ def register_callbacks(app):
             if not all([device_name, latitude, longitude, device_type]):
                 return dbc.Alert("Device name, latitude, longitude, and device type fields are required!", color="danger")
 
-            # Define the base path for uploads
-            upload_directory = os.path.join(os.getcwd(), "dash_app/assets")
+            image_url = None
+            if image_data:
+                # Handle Image Saving Here (since models.py doesn't do it anymore)
+                try:
+                    content_type, content_string = image_data.split(',')
+                    decoded = base64.b64decode(content_string)
+                    assets_path = os.path.join(os.getcwd(), "dash_app", "assets")
+
+                    # Ensure directory exists
+                    os.makedirs(assets_path, exist_ok=True)
+
+                    # Create unique name to avoid overwrite issues
+                    # Or just use device_name.png standard
+                    file_path = os.path.join(assets_path, f"{device_name}.png")
+
+                    with open(file_path, "wb") as f:
+                        f.write(decoded)
+
+                    image_url = f"/assets/{device_name}.png"
+                except Exception as e:
+                    return dbc.Alert(f"Image upload failed: {e}", color="danger")
 
             message = create_or_update_sensor(
                 device_name=device_name,
                 latitude=latitude,
                 longitude=longitude,
                 device_type=device_type,
-                image_data=image_data,
-                base_path=upload_directory
+                image_url=image_url,
             )
 
             # Check if the operation was successful
@@ -598,42 +629,31 @@ def register_callbacks(app):
     )
     def update_sensor_information(n_clicks, selected_device, device_name, latitude, longitude, device_type, image_data,
                                   param_units, param_ids):
-        if not n_clicks:
-            return ""
+        if not n_clicks: return ""
 
-        if not all([device_name, latitude, longitude, device_type]):
-            return dbc.Alert("Device name, latitude, longitude, and device type fields are required!", color="danger")
+        # Note: We are ignoring parameters update for now as discussed,
+        # but we allow updating the main sensor stats.
 
-        # Debugging: Inspect captured IDs and values
-        print("Captured IDs:", param_ids)
-        print("Captured Values:", param_units)
+        image_url = None
+        # Handle Image Update Logic (Simplified)
+        if image_data:
+            try:
+                content_type, content_string = image_data.split(',')
+                decoded = base64.b64decode(content_string)
+                file_path = os.path.join(os.getcwd(), "dash_app", "assets", f"{device_name}.png")
+                with open(file_path, "wb") as f:
+                    f.write(decoded)
+                image_url = f"/assets/{device_name}.png"
+            except:
+                pass
 
-        # Pair parameter names with their corresponding units
-        updated_parameters = [
-            (param_id["index"], param_unit)
-            for param_id, param_unit in zip(param_ids, param_units)
-            if param_unit is not None
-        ]
+        msg = create_or_update_sensor(
+            name=device_name,
+            latitude=latitude,
+            longitude=longitude,
+            device_type=device_type,
+            image_url=image_url
+        )
 
-        # Debugging: Inspect updated parameters
-        print("Updated Parameters:", updated_parameters)
-
-        if not updated_parameters:
-            return dbc.Alert("No parameter units provided!", color="danger")
-
-        # Get the existing sensor by name
-        sensor = get_sensor_by_name(selected_device)
-        if not sensor:
-            return dbc.Alert(f"Sensor '{selected_device}' not found.", color="danger")
-
-        # Update sensor parameters
-        try:
-            update_sensor_parameters(sensor, updated_parameters)
-            update_sensor_data(sensor, updated_parameters)
-        except Exception as e:
-            return dbc.Alert(f"Error updating sensor parameters: {str(e)}", color="danger")
-
-        #delete_unused_parameters()
-
-        return dbc.Alert("Sensor information updated successfully!", color="success")
+        return dbc.Alert(msg, color="success" if "successfully" in msg else "danger")
 

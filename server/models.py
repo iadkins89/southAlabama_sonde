@@ -74,6 +74,11 @@ class SensorData(db.Model):
 # ----------------
 # Query functions
 #-----------------
+def get_sensor_by_name(name):
+    return db.session.query(Sensor).filter(Sensor.name == name).first()
+
+def get_param_by_name(name):
+    return db.session.query(Parameter).filter(Parameter.name == name).first()
 def get_all_sensors():
     """Returns a list of all sensors as dictionaries."""
     sensors = db.session.query(Sensor).all()
@@ -85,11 +90,15 @@ def get_all_sensors():
         "image_url": s.image_url
     } for s in sensors]
 
-def get_sensor_by_name(name):
-    return db.session.query(Sensor).filter(Sensor.name == name).first()
-
-def get_param_by_name(name):
-    return db.session.query(Parameter).filter(Parameter.name == name).first()
+def get_sensors_grouped_by_type():
+    sensors = get_all_sensors()
+    grouped = {}
+    for s in sensors:
+        d_type = s['device_type']
+        if d_type not in grouped:
+            grouped[d_type] = []
+        grouped[d_type].append(s['name'])
+    return grouped
 
 def query_data(sensor_name, start_date, end_date, lora=False):
     """
@@ -173,7 +182,7 @@ def query_most_recent_lora(sensor_name):
 
     return results
 
-def create_update_sensor(name, latitude, longitude, device_type, image_url=None):
+def create_or_update_sensor(name, latitude, longitude, device_type, image_url=None):
     """Creates a new sensor. Does NOT handle parameters (dynamic)."""
     sensor = get_sensor_by_name(name)
 
