@@ -1,6 +1,7 @@
 from server import db
 from sqlalchemy import Index, desc, func
 from datetime import datetime
+import pytz
 from collections import defaultdict
 import pandas as pd
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -39,6 +40,7 @@ class Sensor(db.Model):
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
     image_url = db.Column(db.String(500), nullable=True)
+    timezone = db.Column(db.String(50), default='America/Chicago', nullable=False)
 
     # Relationship to data (Cascades delete: if sensor is deleted, data is deleted)
     data = db.relationship("SensorData", back_populates="sensor", cascade="all, delete-orphan")
@@ -78,6 +80,13 @@ def get_sensor_by_name(name):
 
 def get_param_by_name(name):
     return db.session.query(Parameter).filter(Parameter.name == name).first()
+
+def get_sensor_timezone(sensor_name):
+    sensor = get_sensor_by_name(sensor_name)
+    if sensor and sensor.timezone:
+        return sensor.timezone
+    return 'UTC'
+
 def get_all_sensors():
     """Returns a list of all sensors as dictionaries."""
     sensors = db.session.query(Sensor).all()
@@ -99,13 +108,31 @@ def get_sensors_grouped_by_type():
         grouped[d_type].append(s['name'])
     return grouped
 
-def query_data(sensor_name, start_date, end_date, lora=False):
+def query_data(sensor_name, start_date, end_date, lora=False, localize_input=False):
     """
-    Optimized graph query. Returns clean list of dicts.
-    """
+        Retrieves sensor data.
+
+        Args:
+            lora (bool): If True, LoRaWAN data (rssi, snr, and battery) are returned.
+                         False, all other data is retrieved
+            localize_input (bool): If True, assumes start_date/end_date are in the
+                                   SENSOR'S timezone. Converts them to UTC before querying.
+        """
     sensor = get_sensor_by_name(sensor_name)
     if not sensor:
         return []
+
+    if localize_input and sensor.timezone:
+        try:
+            local_tz = pytz.timezone(sensor.timezone)
+            if start_date.tzinfo is None:
+                start_date = local_tz.localize(start_date).astimezone(pytz.utc).replace(tzinfo=None)
+            if end_date.tzinfo is None:
+                end_date = local_tz.localize(end_date).astimezone(pytz.utc).replace(tzinfo=None)
+        except:
+            pass
+
+
 
     query = (
         db.session.query(
@@ -154,56 +181,65 @@ def get_parameters(sensor_name):
     )
     return params
 
-
-def query_lora_data(start_date, end_date, sensor_name, include_units=True):
-    """
-    Deprecated
-    """
-    return query_data(sensor_name, start_date, end_date, lora=True)
-
 def query_most_recent_lora(sensor_name):
     """
-    ADAPTER: Returns the latest health stats.
-    Format expected: list of tuples/objects like [('battery', val, val), ...]
-    """
-    summary = get_measurement_summary(sensor_name, include_health=True)
-    if "error" in summary:
+        Fetches the most recent Battery, RSSI, and SNR for a sensor.
+        Queries SensorData (since LoraData table is gone).
+        """
+    sensor = get_sensor_by_name(sensor_name)
+
+    if not sensor:
         return []
 
-    # Extract just the health metrics
-    targets = ['battery', 'rssi', 'snr']
+    # The parameters we consider "Health" stats
+    health_params = ['battery', 'rssi', 'snr']
     results = []
 
-    for m in summary.get('most_recent_measurements', []):
-        if m['parameter'].lower() in targets:
-            # Format expected by gauge callback: (name, timestamp, value)
-            results.append((m['parameter'].lower(), m['timestamp'], m['value']))
+    for param_name in health_params:
+        # Find the parameter ID
+        param = Parameter.query.filter_by(name=param_name).first()
+        if not param:
+            continue
+
+        # Get latest reading for this specific parameter
+        latest = db.session.query(SensorData) \
+            .filter_by(sensor_id=sensor.id, parameter_id=param.id) \
+            .order_by(SensorData.timestamp.desc()) \
+            .first()
+
+        if latest:
+            results.append((param_name, latest.timestamp, latest.value))
 
     return results
 
-def create_or_update_sensor(name, latitude, longitude, device_type, image_url=None):
+def create_or_update_sensor(name, latitude, longitude, device_type, image_url=None, timezone='America/Chicago'):
     """Creates a new sensor. Does NOT handle parameters (dynamic)."""
-    sensor = get_sensor_by_name(name)
-
     try:
+        sensor = get_sensor_by_name(name)
         if sensor:
             sensor.latitude = latitude
             sensor.longitude = longitude
             sensor.device_type = device_type
+            sensor.timezone = timezone
 
             if image_url:
                 sensor.image_url = image_url
 
-        new_sensor = Sensor(
-            name=name,
-            latitude=latitude,
-            longitude=longitude,
-            device_type=device_type,
-            image_url=image_url
-        )
-        db.session.add(new_sensor)
-        db.session.commit()
-        return f"Successfully created sensor '{name}'."
+            action = 'updated'
+        else:
+            sensor = Sensor(
+                name=name,
+                latitude=latitude,
+                longitude=longitude,
+                device_type=device_type,
+                image_url=image_url,
+                timezone = timezone
+            )
+            db.session.add(sensor)
+            action = "created"
+
+            db.session.commit()
+        return f"Sensor '{name}' {action} successfully."
     except Exception as e:
         db.session.rollback()
         return f"Database Error: {str(e)}"
@@ -217,56 +253,52 @@ def get_measurement_summary(sensor_name, include_health=False):
     if not sensor:
         return {"error": f"Sensor '{sensor_name}' not found"}
 
-    relevant_count = (
-        db.session.query(func.count(func.distinct(SensorData.parameter_id)))
-        .filter(SensorData.sensor_id == sensor.id)
-        .scalar()
-    )
+    # Get the most recent timestamp for this sensor
+    latest_ts = db.session.query(func.max(SensorData.timestamp)) \
+        .filter_by(sensor_id=sensor.id).scalar()
 
-    if not relevant_count:
+    if not latest_ts:
         return {"message": f"No data available for sensor '{sensor_name}'"}
 
-    # Fetch recent data
-    query = (
-        db.session.query(SensorData, Parameter)
-        .join(Parameter, SensorData.parameter_id == Parameter.id)
-        .filter(SensorData.sensor_id == sensor.id)
-    )
+    # Fetch all parameters for the latest timestamp not including health params
+    recent_data = db.session.query(SensorData, Parameter.name, Parameter.canonical_unit) \
+        .join(Parameter, SensorData.parameter_id == Parameter.id) \
+        .filter(SensorData.sensor_id == sensor.id) \
+        .filter(SensorData.timestamp == latest_ts) \
+        .filter(~Parameter.name.in_(HEALTH_PARAMS))\
+        .all()
 
-    if not include_health:
-        query = query.filter(Parameter.name.notin_(HEALTH_PARAMS))
+    summary_list = []
 
-    recent_data = query.order_by(desc(SensorData.timestamp)).limit(relevant_count).all()
-
-    summary_dict = {}
-
-    for data_row, param_row in recent_data:
-        p_name = param_row.name
-
-        if p_name not in summary_dict:
-            summary_dict[p_name] = {
-                "parameter": f"{p_name} ({param_row.canonical_unit})",
-                "value": data_row.value,
-                "timestamp": data_row.timestamp
-            }
+    for data_obj, p_name, p_unit in recent_data:
+        summary_list.append({
+            "parameter": f"{p_name} ({p_unit})",
+            "value": data_obj.value,
+            "timestamp": data_obj.timestamp
+        })
 
     return {
         "sensor_name": sensor.name,
         "latitude": sensor.latitude,
         "longitude": sensor.longitude,
-        "most_recent_measurements": list(summary_dict.values())
+        "timezone": sensor.timezone,
+        "most_recent_measurements": summary_list
     }
 
 def save_data_to_csv(data, sensor_name):
     organized_data = defaultdict(dict)
-    for parameter, timestamp, value, unit in data:
+
+    timezone_str = get_sensor_timezone(sensor_name)
+
+    for timestamp, value, parameter, unit in data:
         organized_data[timestamp][f"{parameter} ({unit})"] = value
 
     # Create a DataFrame from the organized data
     df = pd.DataFrame.from_dict(organized_data, orient='index').reset_index()
 
-    # Rename the first column to 'timestamp'
-    df.rename(columns={'index': 'timestamp'}, inplace=True)
+    # Rename the first column to 'timestamp (timezone)'
+    formatted_time = f"timestamp ({timezone_str})"
+    df.rename(columns={'index': formatted_time}, inplace=True)
 
     # Convert the DataFrame to a CSV string
     csv_data = df.to_csv(index=False)

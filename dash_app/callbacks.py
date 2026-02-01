@@ -7,11 +7,11 @@ from server.models import (query_data,
                            save_data_to_csv,
                            get_measurement_summary,
                            query_most_recent_lora,
-                           query_lora_data,
                            create_or_update_sensor,
                            get_sensors_grouped_by_type,
                            get_all_sensors,
                            get_sensor_by_name,
+                           get_sensor_timezone,
                            get_parameters,
                     # These are deprecated but kept for import safety
                            update_sensor_parameters,
@@ -137,7 +137,6 @@ def register_callbacks(app):
             return f"/dashboard?name={sensor_name}", sensor_name
         return no_update, no_update
 
-
     @app.callback(
         Output('multi-sensor-graph', 'children'),
         [
@@ -148,28 +147,33 @@ def register_callbacks(app):
     )
     def update_multi_sensor_graph(date_range_value, sensor_name, live_data):
 
-        cst_today = datetime.utcnow()
-        start_date = cst_today - timedelta(days=2)
-        print(f"GRAPH UPDATE TRIGGERED. Sensor: {sensor_name}, Live Data Event: {live_data}")
-
         if not sensor_name:
             return html.Div("No sensor selected.")
 
-        # Determine start date based on selected radio option
+        now = datetime.utcnow()
         if date_range_value == "2-days":
-            start_date = cst_today - timedelta(days=2)
+            start = now - timedelta(days=2)
         elif date_range_value == "1-week":
-            start_date = cst_today - timedelta(weeks=1)
+            start = now - timedelta(weeks=1)
         elif date_range_value == "1-month":
-            start_date = cst_today - timedelta(weeks=4)
+            start = now - timedelta(weeks=4)
         elif date_range_value == "1-year":
-            start_date = cst_today - timedelta(days=365)
+            start = now - timedelta(days=365)
+        else:
+            start = now - timedelta(days=2)
 
         # Query data with units
-        data = query_data(sensor_name, start_date, cst_today, lora=False)
+        data = query_data(sensor_name, start, now, lora=False)
 
         if not data:
             return html.Div(f"No data available for sensor '{sensor_name}' in the selected date range.")
+
+        # Prepare Timezone for Display
+        tz_str = get_sensor_timezone(sensor_name)
+        try:
+            target_tz = pytz.timezone(tz_str)
+        except:
+            target_tz = pytz.utc
 
         # Process data
         parameter_data = {}
@@ -177,11 +181,11 @@ def register_callbacks(app):
 
         for row in data:
             timestamp, value, parameter_name, unit = row.timestamp, row.value, row.name, row.unit
-
+            local_ts = timestamp.replace(tzinfo=pytz.utc).astimezone(target_tz)
             if parameter_name not in parameter_data:
                 parameter_data[parameter_name] = {"timestamps": [], "values": []}
                 parameter_units[parameter_name] = unit
-            parameter_data[parameter_name]["timestamps"].append(timestamp)
+            parameter_data[parameter_name]["timestamps"].append(local_ts)
             parameter_data[parameter_name]["values"].append(value)
 
         # Sort data by timestamps for each parameter
@@ -205,7 +209,8 @@ def register_callbacks(app):
             last_val = values["values"][-1]
 
             # Check if the last point is older than 24 hours
-            is_active = (datetime.utcnow() - last_time) < timedelta(days=1)
+            now_aware = datetime.utcnow().replace(tzinfo=pytz.utc).astimezone(target_tz)
+            is_active = (now_aware - last_time) < timedelta(days=1)
 
             trace_data = []
 
@@ -282,7 +287,7 @@ def register_callbacks(app):
         if n_clicks is None:
             raise PreventUpdate
         else:
-            #Convert dates from string to date_time object and set hr/min/sec to get the full days
+            #Convert dates from string to date_time object and set hr/min/sec to get full days
             start_date = parse_date(start_date).replace(hour=0, minute=0, second=0)
             end_date = parse_date(end_date).replace(hour=23, minute=59, second=59)
 
@@ -292,9 +297,9 @@ def register_callbacks(app):
                 return True, 'Please provide a valid filename.', None
 
             if data_type == "   Sensor Data":
-                data = query_data(sensor_name, start_date, end_date, lora=False)
+                data = query_data(sensor_name, start_date, end_date, lora=False, localize_input=True)
             else:
-                data = query_lora_data(sensor_name,start_date, end_date, lora=True)
+                data = query_data(sensor_name,start_date, end_date, lora=True, localize_input=True)
 
             if not data:
                 return True, 'No data found for the given date range.', None
@@ -328,7 +333,17 @@ def register_callbacks(app):
         if not recent_measurements:
             return sensor_name, html.P("No data received yet.", className="text-warning")
 
-        timestamp = recent_measurements[0]["timestamp"].strftime("%a %b %d, %H:%M")
+        tz_str = summary.get("timezone", "UTC")
+        try:
+            target_tz = pytz.timezone(tz_str)
+            utc_ts = recent_measurements[0]["timestamp"].replace(tzinfo=pytz.utc)
+            local_ts = utc_ts.astimezone(target_tz)
+            timestamp_str = local_ts.strftime("%a %b %d, %H:%M")
+            timestamp_str = f"{timestamp_str} ({tz_str})"
+        except:
+            timestamp_str = str(recent_measurements[0]["timestamp"])
+            timestamp_str = f"{timestamp_str} ({tz_str})"
+
 
         #Format title
         title_name = sensor_name + " " + "Information"
@@ -363,7 +378,7 @@ def register_callbacks(app):
         content = html.Div(
             [
                 html.Div(
-                    timestamp,
+                    timestamp_str,
                     style={
                         "text-align": "center",
                         "font-weight": "bold"
@@ -425,7 +440,7 @@ def register_callbacks(app):
          Output("snr-progress", "color")],
         [Input("sensor-name-store", "data")]
     )
-    def update_sensor_health(sensor_name):
+    def update_sensor_health(sensor_name, live_data):
 
         # Query data
         data = query_most_recent_lora(sensor_name)
@@ -514,11 +529,12 @@ def register_callbacks(app):
             State("device-name", "value"),
             State("latitude", "value"),
             State("longitude", "value"),
+            State("timezone", "value"),
             State("device-type", "value"),
             State("device-image", "contents"),
         ],
     )
-    def submit_onboarding_form(n_clicks, device_name, latitude, longitude, device_type, image_data):
+    def submit_onboarding_form(n_clicks, device_name, latitude, longitude, timezone, device_type, image_data):
         if n_clicks:
             # Validate required fields
             if not all([device_name, latitude, longitude, device_type]):
@@ -552,6 +568,7 @@ def register_callbacks(app):
                 longitude=longitude,
                 device_type=device_type,
                 image_url=image_url,
+                timezone = timezone
             )
 
             # Check if the operation was successful

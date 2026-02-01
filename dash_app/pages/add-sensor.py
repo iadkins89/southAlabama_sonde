@@ -31,6 +31,23 @@ def layout():
                 dbc.Col(dbc.Input(type="number", id="longitude", placeholder="Enter longitude"), width=12, md=10),
             ], className="mb-3"),
             dbc.Row([
+                dbc.Col(dbc.Label("Timezone", className="text-start text-md-end"), width=12, md=2),
+                dbc.Col(
+                    dcc.Dropdown(
+                        id="timezone",
+                        options=[
+                            {'label': 'Central Time (Mobile, AL, Gulf)', 'value': 'America/Chicago'},
+                            {'label': 'Eastern Time (Florida, Atlantic)', 'value': 'America/New_York'},
+                            {'label': 'UTC (Universal Standard)', 'value': 'UTC'}
+                        ],
+                        value='America/Chicago',  # Default to Mobile time
+                        clearable=False,
+                        style={'color': 'black'}  # Fixes dark mode visibility issues if present
+                    ),
+                    width=12, md=10
+                ),
+            ], className="mb-3"),
+            dbc.Row([
                 dbc.Col(dbc.Label("Device Type", className="text-start text-md-end"), width=12, md=2),
                 dbc.Col(
                     dbc.RadioItems(
