@@ -21,18 +21,10 @@ def parse_lora_message(sensor_data):
         # Convert timestamp to Central Time
         unix_timestamp = payload.get("timestamp")
         utc_time = datetime.utcfromtimestamp(unix_timestamp)
-        central_time = utc_time.replace(tzinfo=pytz.utc).astimezone(pytz.timezone('America/Chicago'))
-        payload['timestamp'] = central_time
-
-        # Iterate over payload parameters
-        for param, value in payload.items():
-            # Skip the timestamp key
-            if param == "timestamp":
-                continue
+        payload['timestamp'] = utc_time
 
         return{
             "sensor_name": sensor_name,
-            "timestamp": central_time,
             "measurements": payload,
             "lat": None,
             "lon": None
@@ -72,7 +64,7 @@ def parse_iridium_message(sensor_data):
         b64_string = sensor_data.get('data') or sensor_data.get('message')
 
         payload = {}
-
+        payload['timestamp'] = timestamp
         if b64_string:
             try:
                 raw = base64.b64decode(b64_string)
@@ -89,7 +81,6 @@ def parse_iridium_message(sensor_data):
 
         return {
             "sensor_name": sensor_name,
-            "timestamp": timestamp,
             "measurements": payload,
             "lat": lat,
             "lon": lon

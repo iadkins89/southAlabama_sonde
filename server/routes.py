@@ -63,8 +63,8 @@ def setup_routes(server):
             return jsonify({'error': f"Device '{sensor_name}' not onboarded."}), 403
 
         #Data prep. Handle lat and long (not reported by LoRaWAN sensors)
-        timestamp = payload['timestamp']
         measurements = payload['measurements']
+        timestamp = measurements.get('timestamp')
         lat = payload.get('lat') #handle missing data gracefully
         lon = payload.get('lon')
 

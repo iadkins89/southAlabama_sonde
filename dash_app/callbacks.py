@@ -438,7 +438,8 @@ def register_callbacks(app):
          Output("snr-progress", "value"),
          Output("snr-progress", "label"),
          Output("snr-progress", "color")],
-        [Input("sensor-name-store", "data")]
+        [Input("sensor-name-store", "data"),
+         Input("live-sensor-data", "data")]
     )
     def update_sensor_health(sensor_name, live_data):
 
