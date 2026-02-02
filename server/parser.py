@@ -71,7 +71,7 @@ def parse_iridium_message(sensor_data):
 
                 do, ec, ph, temp = struct.unpack('<4f', raw)
 
-                payload['dissolved oxygen'] = do
+                payload['dissolved_oxygen'] = do
                 payload['conductivity'] = ec
                 payload['pH'] = ph
                 payload['temperature'] = temp

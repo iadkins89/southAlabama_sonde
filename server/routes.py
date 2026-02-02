@@ -75,8 +75,8 @@ def setup_routes(server):
 
         #Add lat/lon to measurements to store in SensorData and track over time
         if lat is not None:
-            measurements['Latitude'] = float(lat)
-            measurements['Longitude'] = float(lon)
+            measurements['latitude'] = float(lat)
+            measurements['longitude'] = float(lon)
 
         #Data Ingestion
         new_data = [] #dictionary to emit

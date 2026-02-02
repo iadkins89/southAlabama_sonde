@@ -271,8 +271,10 @@ def get_measurement_summary(sensor_name, include_health=False):
     summary_list = []
 
     for data_obj, p_name, p_unit in recent_data:
+        if p_name == "latitude" or p_name == "longitude":
+            continue
         summary_list.append({
-            "parameter": f"{p_name} ({p_unit})",
+            "parameter": f"{p_name} {f'({p_unit})' if p_unit else ''}",
             "value": data_obj.value,
             "timestamp": data_obj.timestamp
         })

@@ -183,6 +183,8 @@ def register_callbacks(app):
             timestamp, value, parameter_name, unit = row.timestamp, row.value, row.name, row.unit
             local_ts = timestamp.replace(tzinfo=pytz.utc).astimezone(target_tz)
             if parameter_name not in parameter_data:
+                if parameter_name == "longitude" or parameter_name == "latitude":
+                    continue
                 parameter_data[parameter_name] = {"timestamps": [], "values": []}
                 parameter_units[parameter_name] = unit
             parameter_data[parameter_name]["timestamps"].append(local_ts)
@@ -253,7 +255,7 @@ def register_callbacks(app):
                             "linecolor": "#dcdcdc", "showline": True
                         },
                         yaxis={
-                            "title": f"{parameter.replace('_', ' ').capitalize()} ({unit})",
+                            "title": f"{parameter.replace('_', ' ').capitalize()}{f' ({unit})' if unit else ''}",
                             "range": [min_y - y_padding, max_y + y_padding],
                             "showgrid": True, "gridcolor": "#f0f0f0",
                         },
