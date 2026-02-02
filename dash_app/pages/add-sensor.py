@@ -65,7 +65,7 @@ def layout():
             ], className="mb-3"),
             dbc.Row([
                 dbc.Col(dbc.Label("Device Image", className="text-start text-md-end"), width=12, md=2),
-                dbc.Col(
+                dbc.Col([
                     dcc.Upload(
                         id="device-image",
                         children=html.Div([
@@ -83,8 +83,9 @@ def layout():
                             "margin": "10px",
                         },
                         multiple=False,
-                    ), width=12, md=10
-                ),
+                        accept="image/*"
+                    ),
+                ], width=12, md=10),
             ], className="mb-3"),
             dbc.Row([
                 dbc.Col(

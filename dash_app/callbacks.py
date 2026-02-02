@@ -424,11 +424,18 @@ def register_callbacks(app):
         Input("sensor-name-store", "data"),
     )
     def get_sensor_pic(sensor_name):
-        image_path = f"dash_app/assets/{sensor_name}.png"
-        if os.path.exists(os.path.join(os.getcwd(), image_path)):
-            return f"/assets/{sensor_name}.png"  # Return the relative path for Dash to render
+        if not sensor_name:
+            return "/assets/default_sensor.png"
+
+        sensor = get_sensor_by_name(sensor_name)
+
+        # Logic: If DB has image_data, use it. Else, default.
+        if sensor and sensor.image_data:
+            image_src = sensor.image_data
         else:
-            return "/assets/no_image_available.png"
+            image_src = "/assets/default_sensor.png"
+
+        return image_src
 
     @app.callback(
         [Output("battery-gauge", "value"),
@@ -543,35 +550,14 @@ def register_callbacks(app):
             if not all([device_name, latitude, longitude, device_type]):
                 return dbc.Alert("Device name, latitude, longitude, and device type fields are required!", color="danger")
 
-            image_url = None
-            if image_data:
-                # Handle Image Saving Here (since models.py doesn't do it anymore)
-                try:
-                    content_type, content_string = image_data.split(',')
-                    decoded = base64.b64decode(content_string)
-                    assets_path = os.path.join(os.getcwd(), "dash_app", "assets")
-
-                    # Ensure directory exists
-                    os.makedirs(assets_path, exist_ok=True)
-
-                    # Create unique name to avoid overwrite issues
-                    # Or just use device_name.png standard
-                    file_path = os.path.join(assets_path, f"{device_name}.png")
-
-                    with open(file_path, "wb") as f:
-                        f.write(decoded)
-
-                    image_url = f"/assets/{device_name}.png"
-                except Exception as e:
-                    return dbc.Alert(f"Image upload failed: {e}", color="danger")
-
             message = create_or_update_sensor(
                 name=device_name,
                 latitude=latitude,
                 longitude=longitude,
                 device_type=device_type,
-                image_url=image_url,
-                timezone = timezone
+                image_data=image_data,
+                timezone = timezone,
+                active = True
             )
 
             # Check if the operation was successful
@@ -581,6 +567,38 @@ def register_callbacks(app):
                 return dbc.Alert(message, color="danger")
 
         return ""
+
+    @app.callback(
+        [Output("device-image", "children"),
+         Output("device-image", "style")],
+        [Input("device-image", "contents")]
+    )
+    def show_add_sensor_preview(image_data):
+        # Default Style (Small box with text)
+        default_style = {
+            "width": "100%", "height": "80px", "lineHeight": "80px",
+            "borderWidth": "1px", "borderStyle": "dashed",
+            "borderRadius": "5px", "textAlign": "center", "margin": "10px",
+        }
+
+        if not image_data:
+            # Show default text
+            default_content = html.Div(["Drag and Drop or ", html.A("Select an Image File")])
+            return default_content, default_style
+
+        # Image Style (Bigger box containing the image)
+        image_style = {
+            "width": "100%", "height": "300px",  # Made taller to fit image
+            "borderWidth": "1px", "borderStyle": "solid",
+            "borderRadius": "5px", "textAlign": "center", "margin": "10px",
+            "display": "flex", "alignItems": "center", "justifyContent": "center",
+            "overflow": "hidden"
+        }
+
+        # Return the actual image tag inside the upload box
+        image_content = html.Img(src=image_data, style={"maxHeight": "100%", "maxWidth": "100%"})
+
+        return image_content, image_style
 
     @app.callback(
         Output("form-container", "style"),
@@ -641,45 +659,33 @@ def register_callbacks(app):
 
     @app.callback(
         Output("update-submission-response", "children"),
-        Input("update-submit-btn", "n_clicks"),
-        [
-            State("select-device-dropdown", "value"),
-            State("update-device-name", "value"),
-            State("update-latitude", "value"),
-            State("update-longitude", "value"),
-            State("update-device-type", "value"),
-            State("update-device-image", "contents"),
-            State({"type": "parameter-input", "index": ALL}, "value"),  # Capture all dynamic inputs
-            State({"type": "parameter-input", "index": ALL}, "id"),  # Capture all IDs of inputs
-        ]
+        [Input("update-submit-btn", "n_clicks"),
+         Input("deactivate-btn", "n_clicks")],  # Matches id in update-sensor.py
+        [State("select-device-dropdown", "value"),
+         State("update-device-name", "value"),
+         State("update-latitude", "value"),
+         State("update-longitude", "value"),
+         State("update-device-type", "value"),
+         State("update-device-image", "contents")]  # Matches id in update-sensor.py
     )
-    def update_sensor_information(n_clicks, selected_device, device_name, latitude, longitude, device_type, image_data,
-                                  param_units, param_ids):
-        if not n_clicks: return ""
+    def update_sensor_information(submit_clicks, deactivate_clicks, original_name, new_name, lat, lon, dtype,
+                                  image_data):
+        # Determine which button was clicked
+        ctx = callback_context
+        if not ctx.triggered: return ""
 
-        # Note: We are ignoring parameters update for now as discussed,
-        # but we allow updating the main sensor stats.
+        button_id = ctx.triggered[0]['prop_id'].split('.')[0]
 
-        image_url = None
-        # Handle Image Update Logic (Simplified)
-        if image_data:
-            try:
-                content_type, content_string = image_data.split(',')
-                decoded = base64.b64decode(content_string)
-                file_path = os.path.join(os.getcwd(), "dash_app", "assets", f"{device_name}.png")
-                with open(file_path, "wb") as f:
-                    f.write(decoded)
-                image_url = f"/assets/{device_name}.png"
-            except:
-                pass
+        if button_id == "deactivate-btn":
+            # Soft Delete: Set active=False, ignore image data
+            msg = create_or_update_sensor(original_name, lat, lon, dtype, image_data=None, active=False)
+            return dbc.Alert(f"Sensor '{original_name}' deactivated.", color="warning")
 
-        msg = create_or_update_sensor(
-            name=device_name,
-            latitude=latitude,
-            longitude=longitude,
-            device_type=device_type,
-            image_url=image_url
-        )
+        elif button_id == "update-submit-btn":
+            # Normal Update: Set active=True
+            msg = create_or_update_sensor(new_name, lat, lon, dtype, image_data, active=True)
+            return dbc.Alert(msg, color="success")
 
-        return dbc.Alert(msg, color="success" if "successfully" in msg else "danger")
+        return ""
+
 

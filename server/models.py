@@ -5,6 +5,9 @@ import pytz
 from collections import defaultdict
 import pandas as pd
 from werkzeug.security import generate_password_hash, check_password_hash
+from PIL import Image, ImageOps
+import io
+import base64
 
 HEALTH_PARAMS = ['Battery', 'RSSI', 'SNR', 'battery', 'rssi', 'snr']
 class User(db.Model):
@@ -39,8 +42,10 @@ class Sensor(db.Model):
     device_type = db.Column(db.String(50))  # 'sonde', 'tide_gauge', etc.
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
-    image_url = db.Column(db.String(500), nullable=True)
+    image_data = db.Column(db.Text, nullable=True)
     timezone = db.Column(db.String(50), default='America/Chicago', nullable=False)
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Relationship to data (Cascades delete: if sensor is deleted, data is deleted)
     data = db.relationship("SensorData", back_populates="sensor", cascade="all, delete-orphan")
@@ -95,7 +100,7 @@ def get_all_sensors():
         "latitude": s.latitude,
         "longitude": s.longitude,
         "device_type": s.device_type,
-        "image_url": s.image_url
+        "image_data": s.image_data
     } for s in sensors]
 
 def get_sensors_grouped_by_type():
@@ -212,33 +217,67 @@ def query_most_recent_lora(sensor_name):
 
     return results
 
-def create_or_update_sensor(name, latitude, longitude, device_type, image_url=None, timezone='America/Chicago'):
+
+def compress_image(base64_string, max_size=(800, 800), quality=70):
+    """
+    Accepts a base64 string, resizes/compresses it, and returns a new base64 string.
+    """
+    try:
+        # Split header (e.g. "data:image/png;base64,") from data
+        if ',' in base64_string:
+            header, data = base64_string.split(',', 1)
+        else:
+            header = "data:image/jpeg;base64"  # Default assumption
+            data = base64_string
+
+        # Decode to bytes
+        image_bytes = base64.b64decode(data)
+        img = Image.open(io.BytesIO(image_bytes))
+
+        #Fix orientation
+        img = ImageOps.exif_transpose(img)
+
+        # Convert to RGB (if PNG has transparency, this avoids errors saving as JPEG)
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+
+        # Resize and save
+        img.thumbnail(max_size)
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=quality)
+
+        # Re-encode to Base64
+        new_data = base64.b64encode(buffer.getvalue()).decode('utf-8')
+
+        return f"data:image/jpeg;base64,{new_data}"
+
+    except Exception as e:
+        print(f"Image compression error: {e}")
+        return base64_string  # Return original if compression fails
+
+def create_or_update_sensor(name, latitude, longitude, device_type, image_data=None, timezone='America/Chicago', active = True):
     """Creates a new sensor. Does NOT handle parameters (dynamic)."""
     try:
         sensor = get_sensor_by_name(name)
-        if sensor:
-            sensor.latitude = latitude
-            sensor.longitude = longitude
-            sensor.device_type = device_type
-            sensor.timezone = timezone
-
-            if image_url:
-                sensor.image_url = image_url
-
-            action = 'updated'
-        else:
-            sensor = Sensor(
-                name=name,
-                latitude=latitude,
-                longitude=longitude,
-                device_type=device_type,
-                image_url=image_url,
-                timezone = timezone
-            )
+        action = None
+        if not sensor:
+            sensor = Sensor(name = name)
             db.session.add(sensor)
-            action = "created"
+            action = 'created'
 
-            db.session.commit()
+        sensor.latitude = latitude
+        sensor.longitude = longitude
+        sensor.device_type = device_type
+        sensor.timezone = timezone
+        sensor.active = active
+
+        if image_data:
+            sensor.image_data = compress_image(image_data)
+
+        if not action:
+            action = 'updated'
+
+        db.session.commit()
         return f"Sensor '{name}' {action} successfully."
     except Exception as e:
         db.session.rollback()
