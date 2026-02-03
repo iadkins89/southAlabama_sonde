@@ -13,6 +13,7 @@ def layout():
         return dcc.Location(pathname='/onboarding', id='redirect-login')
 
     layout = dbc.Container([
+        dcc.Store(id="sensor-active-status-store"),
         dcc.Location(id="url", refresh=True),
         html.H2("Update Existing Sensor", className="text-center mt-4"),
         dbc.Button("Back", href="/onboarding", color="secondary", className="mb-4"),
@@ -90,7 +91,7 @@ def layout():
                 dbc.Row([
                     dbc.Col(dbc.Button("Submit", id="update-submit-btn", color="success", className="mt-3 w-100"),
                             width=12, sm=6),
-                    dbc.Col(dbc.Button("Deactivate", id="deactivate-btn", color="danger", className="mt-3 w-100"),
+                    dbc.Col(dbc.Button("Deactivate", id="toggle-active-btn", color="danger", className="mt-3 w-100"),
                             width=12, sm=6),
                 ], className="d-flex justify-content-between mb-3"),
                 html.Div(id="update-submission-response", className="mt-3"),

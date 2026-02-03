@@ -6,6 +6,11 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from server.utils import compress_image
 
 HEALTH_PARAMS = ['Battery', 'RSSI', 'SNR', 'battery', 'rssi', 'snr']
+
+user_sensor_association = db.Table('user_sensor',
+    db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+    db.Column('sensor_id', db.Integer, db.ForeignKey('sensors.id'), primary_key=True)
+)
 class User(db.Model):
     __tablename__ = 'user'
 
@@ -14,6 +19,8 @@ class User(db.Model):
     password_hash = db.Column(db.String(256), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    sensors = db.relationship('Sensor', secondary=user_sensor_association, backref='users')
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password, method='pbkdf2:sha256')
@@ -30,9 +37,25 @@ class User(db.Model):
     def __repr__(self):
         return f"<User {self.username}>"
 
+class LocationHistory(db.Model):
+    __tablename__ = 'location_history'
+
+    id = db.Column(db.Integer, primary_key=True)
+    sensor_id = db.Column(db.Integer, db.ForeignKey('sensors.id'), nullable=False)
+    latitude = db.Column(db.Float, nullable=False)
+    longitude = db.Column(db.Float, nullable=False)
+
+    # The span of time this sensor was at this location
+    deployed_at = db.Column(db.DateTime, default=datetime.utcnow)
+    removed_at = db.Column(db.DateTime, nullable=True)  # NULL means "Currently Here"
+
+    def __repr__(self):
+        return f"<LocationHistory {self.sensor_id}: {self.deployed_at} to {self.removed_at}>"
+
 # Sensor table
 class Sensor(db.Model):
     __tablename__ = 'sensors'
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), unique=True, nullable=False)
     device_type = db.Column(db.String(50))  # 'sonde', 'tide_gauge', etc.
@@ -49,6 +72,7 @@ class Sensor(db.Model):
 # Parameter table
 class Parameter(db.Model):
     __tablename__ = 'parameters'
+
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), unique=True, nullable=False)  # e.g. "Temperature"
     canonical_unit = db.Column(db.String(20))  # e.g. "degC"
@@ -58,6 +82,7 @@ class Parameter(db.Model):
 # SensorData table
 class SensorData(db.Model):
     __tablename__ = 'sensor_data'
+
     id = db.Column(db.Integer, primary_key=True)
     timestamp = db.Column(db.DateTime, index=True, nullable=False)
     value = db.Column(db.Float, nullable=False)
@@ -96,7 +121,8 @@ def get_all_sensors():
         "latitude": s.latitude,
         "longitude": s.longitude,
         "device_type": s.device_type,
-        "image_data": s.image_data
+        "image_data": s.image_data,
+        "active": s.active
     } for s in sensors]
 
 def get_sensors_grouped_by_type():
@@ -210,24 +236,71 @@ def create_or_update_sensor(name, latitude, longitude, device_type, image_data=N
     """Creates a new sensor. DEPRECIATED Does NOT handle parameters (dynamic)."""
     try:
         sensor = get_sensor_by_name(name)
+        now = datetime.utcnow()
         action = None
-        if not sensor:
-            sensor = Sensor(name = name)
-            db.session.add(sensor)
-            action = 'created'
 
         # Prevent invalid lat/lon
         try:
-            lat_float = float(latitude)
-            lon_float = float(longitude)
+            lat_float, lon_float = float(latitude), float(longitude)
         except (ValueError, TypeError):
             return "Error: Latitude and Longitude must be numbers."
 
         if not (-90 <= lat_float <= 90) or not (-180 <= lon_float <= 180):
             return "Error: Coordinates out of range (Lat: -90 to 90, Lon: -180 to 180)"
 
-        sensor.latitude = latitude
-        sensor.longitude = longitude
+        # New sensor
+        if not sensor:
+            sensor = Sensor(name = name)
+            db.session.add(sensor)
+
+            # Create the first history record
+            new_history = LocationHistory(
+                sensor_id=sensor.id,  # Note: This might fail if ID isn't gen yet, see flush below
+                latitude=lat_float,
+                longitude=lon_float,
+                deployed_at=now
+            )
+            # We add sensor first to generate ID
+            db.session.flush()
+            new_history.sensor_id = sensor.id
+            db.session.add(new_history)
+
+            action = 'created'
+
+        # Updating sensor, address location history
+        else:
+            # Check if location changed significantly
+            loc_changed = (abs(sensor.latitude - lat_float) > 0.0001 or
+                           abs(sensor.longitude - lon_float) > 0.0001)
+
+            status_changed_to_active = (not sensor.active and active)
+            status_changed_to_inactive = (sensor.active and not active)
+
+            # If moving, reactivating, or deactivating then close the location history record
+            if loc_changed or status_changed_to_active or status_changed_to_inactive:
+
+                # Find the currently open record (removed_at is NULL)
+                current_history = LocationHistory.query.filter_by(
+                    sensor_id=sensor.id,
+                    removed_at=None
+                ).first()
+
+                if current_history:
+                    current_history.removed_at = now
+
+                    # If we are moving or reactivating then open a new location record
+                    # If we are strictly deactivating, we do NOT open a new record
+                    if active:
+                        new_history = LocationHistory(
+                            sensor_id=sensor.id,
+                            latitude=lat_float,
+                            longitude=lon_float,
+                            deployed_at=now
+                        )
+                        db.session.add(new_history)
+
+        sensor.latitude = lat_float
+        sensor.longitude = lon_float
         sensor.device_type = device_type
         sensor.timezone = timezone
         sensor.active = active

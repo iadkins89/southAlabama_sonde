@@ -133,9 +133,17 @@ def update_multi_sensor_graph(date_range_value, sensor_name, live_data):
             ))
             # Red Dot
             trace_data.append(go.Scatter(
-                x=[last_time], y=[last_val], mode="markers",
+                x=[last_time], y=[last_val],
+                mode="markers+text",
                 marker={"color": "#dc3545", "size": 12, "line": {"width": 2, "color": "white"}},
-                hoverinfo="skip"  # Skip this too! The Line tooltip already covers this point.
+                hoverinfo="skip",  # Skip this too! The Line tooltip already covers this point.
+                text=["Live"],
+                textposition="middle right",
+                textfont=dict(
+                    color="#dc3545",
+                    size=12,
+                    family="Arial Black, sans-serif"
+                ),
             ))
 
         graph = dcc.Graph(
