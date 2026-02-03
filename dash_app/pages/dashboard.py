@@ -2,7 +2,7 @@ from dash import dcc, html, register_page
 import dash_bootstrap_components as dbc
 from datetime import datetime
 import pytz
-from .home import get_map_graph
+from server.utils import get_map_graph
 
 register_page(
     __name__,

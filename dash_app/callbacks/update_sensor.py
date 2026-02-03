@@ -1,6 +1,16 @@
 from dash import callback, Input, Output, State, callback_context
-from server.models import get_sensor_by_name, create_or_update_sensor
+from server.models import get_sensor_by_name, create_or_update_sensor, get_all_sensors
 import dash_bootstrap_components as dbc
+
+@callback(
+    Output("select-device-dropdown", "options"),
+    Input("url", "pathname")
+)
+def populate_sensor_dropdown(pathname):
+    # This fires when the page loads
+    sensors = get_all_sensors()
+    return [{'label': s['name'], 'value': s['name']} for s in sensors]
+
 @callback(
     Output("form-container", "style"),
     [Input("select-device-dropdown", "value")]

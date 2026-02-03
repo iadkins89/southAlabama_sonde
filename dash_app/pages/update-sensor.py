@@ -1,10 +1,6 @@
-import dash
 from dash import dcc, html, register_page
-#import dash_html_components as html
 import dash_bootstrap_components as dbc
-from dash.dependencies import Input, Output, State
 from flask import session
-from server.models import get_all_sensors
 
 register_page(
     __name__,
@@ -25,7 +21,7 @@ def layout():
                 dbc.Col(dbc.Label("Select Device", className="text-start"), width=12, sm=4),
                 dbc.Col(dcc.Dropdown(
                     id="select-device-dropdown",
-                    options=[{'label': device['name'], 'value': device['name']} for device in get_all_sensors()],
+                    options=[],
                     placeholder="Select a sensor"
                 ), width=12, sm=8),
             ], className="mb-3"),

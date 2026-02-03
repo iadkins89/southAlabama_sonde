@@ -1,9 +1,13 @@
 import pandas as pd
+import os
 import io
 import base64
 from PIL import Image, ImageOps
 from collections import defaultdict
-from server.models import get_sensor_timezone, get_sensor_by_name, get_most_recent
+from server.models import get_sensor_timezone, get_sensor_by_name, get_most_recent, get_all_sensors
+import plotly.graph_objs as go
+from dash import dcc
+
 def save_data_to_csv(data, sensor_name):
     organized_data = defaultdict(dict)
 
@@ -95,3 +99,97 @@ def get_measurement_summary(sensor_name, include_health=False):
         "timezone": sensor.timezone,
         "most_recent_measurements": summary_list
     }
+
+def get_map_graph(height, l=10, r=10, t=0, b=0):
+    """
+    Generates a Scattermapbox graph with markers based on sensors' data, including a legend for device types.
+
+    Returns:
+        dcc.Graph: A Dash graph component.
+    """
+    # Retrieve sensor data
+    sensors = get_all_sensors()
+
+    # Define color mapping for device types
+    device_type_colors = {
+        "sonde": "#D95D39",  # Mint Green
+        "tide_gauge": "#F18805",  # Aqua Blue
+        "wave_gauge": "#F0A202",  # Coral Orange
+        "other": "#0E1428"  # Lemon Yellow
+    }
+
+    # Create Scattermapbox traces grouped by device type
+    traces = []
+    if sensors:
+        for device_type, color in device_type_colors.items():
+            # Filter sensors for this device type
+            filtered_sensors = [sensor for sensor in sensors if sensor["device_type"] == device_type]
+
+            # Add a trace if there are sensors of this type
+            if filtered_sensors:
+                traces.append(
+                    go.Scattermapbox(
+                        lat=[sensor["latitude"] for sensor in filtered_sensors],
+                        lon=[sensor["longitude"] for sensor in filtered_sensors],
+                        mode="markers",
+                        marker=dict(
+                            size=16,
+                            color=color,
+                            opacity=0.8
+
+                        ),
+                        text=[sensor["name"] for sensor in filtered_sensors],
+                        hoverinfo="text",
+                        name=device_type.replace("_", " ").capitalize(),  # Legend label
+                        legendgroup=device_type  # Grouping for consistent coloring
+                    )
+                )
+
+    # If no traces, add an empty trace for consistency
+    if not traces:
+        traces.append(
+            go.Scattermapbox(
+                lat=[],
+                lon=[],
+                mode="markers",
+                marker=dict(size=1, opacity=0),  # Invisible marker
+                name="No sensors available",
+            )
+        )
+
+    # Create the map graph
+    map_graph = dcc.Graph(
+        id="map-graph",
+        figure={
+            "data": traces,
+            "layout": go.Layout(
+                autosize=True,
+                hovermode="closest",
+                mapbox=dict(
+                    accesstoken=os.environ.get("MAP_ACCESS_TOKEN"),
+                    bearing=0,
+                    center=dict(lat=30.5, lon=-88.0),  # Default center
+                    pitch=0,
+                    zoom=8,
+                    style="outdoors"
+                ),
+                margin=dict(l=l, r=r, t=t, b=b),
+                showlegend=True,
+                legend=dict(
+                    title="Device Types",
+                    font=dict(size=12),
+                    bgcolor="rgba(255, 255, 255, 0.7)",  # Semi-transparent background
+                    bordercolor="lightgray",
+                    borderwidth=1,
+                    x=0.02,  # Horizontal position within the map
+                    y=0.98,  # Vertical position within the map
+                ),
+            )
+        },
+        style={"height": height},
+        config={
+            "displayModeBar": False
+        }
+    )
+
+    return map_graph
