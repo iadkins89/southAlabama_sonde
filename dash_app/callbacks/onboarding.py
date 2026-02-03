@@ -2,8 +2,6 @@ from dash import callback, Input, Output, State
 from flask import session
 from server.models import User
 
-USERNAME = 'admin'
-PASSWORD = 'admin'
 @callback(
     [Output("login-error", "children"),
      Output("login-form", "style"),
