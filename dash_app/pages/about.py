@@ -1,4 +1,4 @@
-from dash import dcc, html, register_page
+from dash import html, register_page
 import dash_bootstrap_components as dbc
 
 register_page(

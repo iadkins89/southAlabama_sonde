@@ -1,13 +1,10 @@
 from flask import request, jsonify
-from datetime import datetime
-from .models import (Sensor,
-                     Parameter,
+from .models import (Parameter,
                      SensorData,
                      get_sensor_by_name,
                      HEALTH_PARAMS,
                      get_param_by_name)
 from .database import db
-import pytz
 from .realtime import emit_event
 from server.parser import parse_lora_message, parse_iridium_message
 

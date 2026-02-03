@@ -1,4 +1,4 @@
-from flask import Flask, redirect, url_for, request, session
+from flask import Flask, session
 from .database import db, init_db
 from .routes import setup_routes
 import os
