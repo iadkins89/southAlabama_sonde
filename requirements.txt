@@ -48,3 +48,4 @@ Flask-Sessions==0.1.5
 gunicorn
 flask-socketio
 eventlet
+Pillow
