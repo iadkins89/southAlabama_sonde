@@ -1,12 +1,17 @@
 from flask import request, jsonify
-from datetime import datetime
-from .models import Sensor, Parameter, SensorData, LoraData, sensor_parameter
+from .models import (Parameter,
+                     SensorData,
+                     get_sensor_by_name,
+                     HEALTH_PARAMS,
+                     get_param_by_name)
 from .database import db
-import pytz
+from .realtime import emit_event
+from server.parser import parse_lora_message, parse_iridium_message
 
 
 # Helper function to guess unit
-def guess_unit(param, value):
+def guess_unit(param_name):
+    param = param_name.lower()
     PARAMETER_UNITS = {
         "temperature": "°C",
         "pressure": "Pa",
@@ -24,112 +29,98 @@ def guess_unit(param, value):
         "snr": "dB",
         "battery": "V",
     }
-    # Check if the parameter name matches a known unit
-    if param in PARAMETER_UNITS:
-        return PARAMETER_UNITS[param]
-
-    # Fallback logic based on value
-    if isinstance(value, int):
-        return "units"  # Generic count
-    elif isinstance(value, float):
-        if 0 <= value <= 1:
-            return ""  # Probabilities or fractions
-        elif value > 1 and value < 1000:
-            return "m"  # Assume distance in meters
-        else:
-            return "unknown"
-    return "unknown"
+    return PARAMETER_UNITS.get(param, "")
 
 def setup_routes(server):
     @server.route('/receive_data', methods=['POST'])
     def receive_data():
         sensor_data = request.json
-        event_type = request.args.get('event')
+        if not sensor_data:
+            return jsonify({'error': 'No JSON payload received'}), 400
 
-        if event_type == 'up':
-            # Extract general sensor information
-            sensor_name = sensor_data['deviceInfo']["deviceName"]
-            if not sensor_name:
-                return jsonify({"error": "Sensor name is missing in the payload"}), 400
+        payload = None
 
-            rssi = sensor_data['rxInfo'][0].get('rssi')
-            snr = sensor_data['rxInfo'][0].get('snr')
+        #LoRaWAN message
+        if 'deviceInfo' in sensor_data:
+            payload = parse_lora_message(sensor_data)
+        #Iridium message
+        elif 'id' in sensor_data:
+            payload = parse_iridium_message(sensor_data)
+        else:
+            return jsonify({'error': 'Unknown payload format'}), 400
 
-            # Retrieve or create the sensor
-            sensor = Sensor.query.filter_by(name=sensor_name).first()
-            if not sensor:
-                sensor = Sensor(name=sensor_name)
-                db.session.add(sensor)
+        if not payload:
+            return jsonify({'error': 'Parsing failed or empty data'}), 400
+
+        #Reject messages from devices that have not been onboarded
+        sensor_name = payload['sensor_name']
+        sensor = get_sensor_by_name(sensor_name)
+
+        if not sensor:
+            return jsonify({'error': f"Device '{sensor_name}' not onboarded."}), 403
+
+        #Data prep. Handle lat and long (not reported by LoRaWAN sensors)
+        measurements = payload['measurements']
+        timestamp = measurements.get('timestamp')
+        lat = payload.get('lat') #handle missing data gracefully
+        lon = payload.get('lon')
+
+        #Update Sensor table (map pin updates from this)
+        if lat is not None and lon is not None:
+            sensor.latitude = float(lat)
+            sensor.longitude = float(lon)
+
+        #Add lat/lon to measurements to store in SensorData and track over time
+        if lat is not None:
+            measurements['latitude'] = float(lat)
+            measurements['longitude'] = float(lon)
+
+        #Data Ingestion
+        new_data = [] #dictionary to emit
+
+        for param_name, param_value in measurements.items():
+            if param_name.lower() == 'timestamp':
+                continue
+
+            if param_value is None:
+                continue
+
+            #Find the parameter or create it if it is new
+            parameter = get_param_by_name(param_name)
+            if not parameter:
+                parameter = Parameter(name=param_name, canonical_unit=guess_unit(param_name))
+                db.session.add(parameter)
                 db.session.commit()
 
-            # Decode the payload and timestamp
-            payload = sensor_data.get("object", {})
-            payload['rssi'] = rssi
-            payload['snr'] = snr
-            unix_timestamp = payload.get("timestamp")
-            if not unix_timestamp:
-                return jsonify({"error": "Timestamp is missing in the payload"}), 400
+            #Create new SensorData entry
+            new_entry = SensorData(
+                sensor_id = sensor.id,
+                parameter_id = parameter.id,
+                timestamp = timestamp,
+                value = param_value
+            )
+            db.session.add(new_entry)
 
-            # Convert timestamp to Central Time
-            utc_time = datetime.utcfromtimestamp(unix_timestamp)
-            central_time = utc_time.replace(tzinfo=pytz.utc).astimezone(pytz.timezone('America/Chicago'))
+            new_data.append({
+                'name': param_name,
+                'value': param_value,
+                'is_health': param_name in HEALTH_PARAMS
+            })
 
-            # Iterate over payload parameters
-            for param, value in payload.items():
-                # Skip the timestamp key
-                if param == "timestamp":
-                    continue
-
-                # Check if the parameter exists in the database for this sensor
-                # We want to ensure if the parameter exists for this sensor
-                # but maybe has a unit other than a guessed one that we keep
-                # the correct unit.
-                existing_for_sensor = (
-                    db.session.query(Parameter)
-                    .join(sensor_parameter)
-                    .filter(sensor_parameter.c.sensor_id == sensor.id, Parameter.name == param)
-                    .first()
-                )
-
-                if existing_for_sensor:
-                    parameter = existing_for_sensor
-                else:
-                    #Check if this parameter exists for other sensors
-                    guessed_unit = guess_unit(param, value)
-                    parameter = Parameter.query.filter_by(name=param, unit=guessed_unit).first()
-
-                    if not parameter:
-                        # Create new parameter with this name and guessed unit
-                        parameter = Parameter(name=param, unit=guessed_unit)
-                        db.session.add(parameter)
-                        db.session.commit()
-
-                    # Associate parameter with sensor (safe now)
-                    if parameter not in sensor.parameters:
-                        sensor.parameters.append(parameter)
-                        db.session.commit()
-
-                if param not in ['rssi', 'snr', 'battery']:
-                    # Add the sensor data entry
-                    sensor_data_entry = SensorData(
-                        sensor_id=sensor.id,
-                        timestamp=central_time,
-                        parameter_id=parameter.id,
-                        value=value
-                    )
-                    db.session.add(sensor_data_entry)
-                else:
-                    # Add LoRa data for the transmission
-                    lora_data_entry = LoraData(
-                        sensor_id=sensor.id,
-                        timestamp=central_time,
-                        parameter_id=parameter.id,
-                        value=value
-                    )
-                    db.session.add(lora_data_entry)
-
-            # Commit all changes
+        try:
             db.session.commit()
 
-        return jsonify({'message': 'Data received and stored successfully.'}), 200
+            #Real time data
+            emit_event("sensor_update", {
+                "sensor": sensor.name,
+                "timestamp": timestamp.isoformat(),
+                "measurements": new_data
+            })
+
+            return jsonify({'message': 'Data received and stored successfully'}), 200
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"Database insert error: {e}")
+            return jsonify({"error": str(e)}), 500
 

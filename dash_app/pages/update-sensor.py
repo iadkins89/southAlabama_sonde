@@ -1,10 +1,6 @@
-import dash
 from dash import dcc, html, register_page
-import dash_html_components as html
 import dash_bootstrap_components as dbc
-from dash.dependencies import Input, Output, State
 from flask import session
-from server.models import get_all_sensors, get_sensor_by_name, get_measurement_summary
 
 register_page(
     __name__,
@@ -17,6 +13,7 @@ def layout():
         return dcc.Location(pathname='/onboarding', id='redirect-login')
 
     layout = dbc.Container([
+        dcc.Store(id="sensor-active-status-store"),
         dcc.Location(id="url", refresh=True),
         html.H2("Update Existing Sensor", className="text-center mt-4"),
         dbc.Button("Back", href="/onboarding", color="secondary", className="mb-4"),
@@ -25,7 +22,7 @@ def layout():
                 dbc.Col(dbc.Label("Select Device", className="text-start"), width=12, sm=4),
                 dbc.Col(dcc.Dropdown(
                     id="select-device-dropdown",
-                    options=[{'label': device['name'], 'value': device['name']} for device in get_all_sensors()],
+                    options=[],
                     placeholder="Select a sensor"
                 ), width=12, sm=8),
             ], className="mb-3"),
@@ -67,7 +64,7 @@ def layout():
                 ], className="mb-3"),
                 dbc.Row([
                     dbc.Col(dbc.Label("Device Image", className="text-start"), width=12, sm=4),
-                    dbc.Col(
+                    dbc.Col([
                         dcc.Upload(
                             id="update-device-image",
                             children=html.Div([
@@ -85,13 +82,16 @@ def layout():
                                 "margin": "10px",
                             },
                             multiple=False,
-                        ), width=12, sm=8
+                            accept="image/*"
+                        ),
+                        html.Div(html.Img(id="update-image-preview",style={"width": "100%", "max-width": "300px", "marginTop": "10px"}), className="text-center"),
+                        ], width=12, sm=8
                     ),
                 ], className="mb-3"),
                 dbc.Row([
                     dbc.Col(dbc.Button("Submit", id="update-submit-btn", color="success", className="mt-3 w-100"),
                             width=12, sm=6),
-                    dbc.Col(dbc.Button("Deactivate", id="deactivate-btn", color="danger", className="mt-3 w-100"),
+                    dbc.Col(dbc.Button("Deactivate", id="toggle-active-btn", color="danger", className="mt-3 w-100"),
                             width=12, sm=6),
                 ], className="d-flex justify-content-between mb-3"),
                 html.Div(id="update-submission-response", className="mt-3"),

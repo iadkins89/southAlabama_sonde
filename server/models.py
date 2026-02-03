@@ -1,15 +1,16 @@
-from sqlalchemy import distinct, ForeignKey, Table
-from sqlalchemy.orm import relationship
-from sqlalchemy.exc import SQLAlchemyError
-import os
-import base64
-from werkzeug.security import generate_password_hash, check_password_hash  # For hashing passwords
 from server import db
-import pandas as pd
+from sqlalchemy import Index, func
 from datetime import datetime
-from collections import defaultdict
-from sqlalchemy import desc
+import pytz
+from werkzeug.security import generate_password_hash, check_password_hash
+from server.utils import compress_image
 
+HEALTH_PARAMS = ['Battery', 'RSSI', 'SNR', 'battery', 'rssi', 'snr']
+
+user_sensor_association = db.Table('user_sensor',
+    db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
+    db.Column('sensor_id', db.Integer, db.ForeignKey('sensors.id'), primary_key=True)
+)
 class User(db.Model):
     __tablename__ = 'user'
 
@@ -17,19 +18,18 @@ class User(db.Model):
     username = db.Column(db.String(150), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=True)
+    is_admin = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    def set_password(self, password):
-        """Hashes the password for storage."""
-        self.password_hash = generate_password_hash(password)
+    sensors = db.relationship('Sensor', secondary=user_sensor_association, backref='users')
 
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password, method='pbkdf2:sha256')
     def check_password(self, password):
-        """Checks if the provided password matches the stored hash."""
         return check_password_hash(self.password_hash, password)
 
     @classmethod
     def authenticate(cls, username, password):
-        """Authenticate a user based on username and password."""
         user = cls.query.filter_by(username=username).first()
         if user and user.check_password(password):
             return user
@@ -38,485 +38,301 @@ class User(db.Model):
     def __repr__(self):
         return f"<User {self.username}>"
 
-# Association table for many-to-many relationship between Sensor and Parameter
-sensor_parameter = Table(
-    'sensor_parameter',
-    db.Model.metadata,
-    db.Column('sensor_id', db.Integer, ForeignKey('sensor.id'), primary_key=True),
-    db.Column('parameter_id', db.Integer, ForeignKey('parameter.id'), primary_key=True),
-)
+class LocationHistory(db.Model):
+    __tablename__ = 'location_history'
+
+    id = db.Column(db.Integer, primary_key=True)
+    sensor_id = db.Column(db.Integer, db.ForeignKey('sensors.id'), nullable=False)
+    latitude = db.Column(db.Float, nullable=False)
+    longitude = db.Column(db.Float, nullable=False)
+
+    # The span of time this sensor was at this location
+    deployed_at = db.Column(db.DateTime, default=datetime.utcnow)
+    removed_at = db.Column(db.DateTime, nullable=True)  # NULL means "Currently Here"
+
+    def __repr__(self):
+        return f"<LocationHistory {self.sensor_id}: {self.deployed_at} to {self.removed_at}>"
 
 # Sensor table
 class Sensor(db.Model):
-    __tablename__ = 'sensor'
+    __tablename__ = 'sensors'
 
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    name = db.Column(db.String, unique=True, nullable=False)
-    latitude = db.Column(db.Float, nullable=False)
-    longitude = db.Column(db.Float, nullable=False)
-    device_type = db.Column(db.String, nullable=False)
-    image = db.Column(db.String, nullable=True)
-    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), unique=True, nullable=False)
+    device_type = db.Column(db.String(50))  # 'sonde', 'tide_gauge', etc.
+    latitude = db.Column(db.Float)
+    longitude = db.Column(db.Float)
+    image_data = db.Column(db.Text, nullable=True)
+    timezone = db.Column(db.String(50), default='America/Chicago', nullable=False)
+    active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-    # Relationship with sensor_data
-    sensor_data = relationship('SensorData', back_populates='sensor')
-    lora_data = relationship('LoraData', back_populates='sensor')  # Added relationship for LoraData
-
-    # Many-to-many relationship with Parameter
-    parameters = relationship('Parameter', secondary=sensor_parameter, back_populates='sensors')
-
-    def __repr__(self):
-        return f"<Sensor {self.name}>"
+    # Relationship to data (Cascades delete: if sensor is deleted, data is deleted)
+    data = db.relationship("SensorData", back_populates="sensor", cascade="all, delete-orphan")
 
 # Parameter table
 class Parameter(db.Model):
-    __tablename__ = 'parameter'
+    __tablename__ = 'parameters'
 
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    name = db.Column(db.String, nullable=False)
-    unit =db.Column(db.String, nullable=True)
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), unique=True, nullable=False)  # e.g. "Temperature"
+    canonical_unit = db.Column(db.String(20))  # e.g. "degC"
 
-    __table_args__ = (db.UniqueConstraint('name', 'unit', name='uix_name_unit'),) #composite unique constraint between name and unit
-
-    # Many-to-many relationship with Sensor
-    sensors = relationship('Sensor', secondary=sensor_parameter, back_populates='parameters')
-    def __repr__(self):
-        return f"<Parameter {self.name}>"
+    data = db.relationship("SensorData", back_populates="parameter")
 
 # SensorData table
 class SensorData(db.Model):
     __tablename__ = 'sensor_data'
 
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    sensor_id = db.Column(db.Integer, ForeignKey('sensor.id'), nullable=False)
+    id = db.Column(db.Integer, primary_key=True)
     timestamp = db.Column(db.DateTime, index=True, nullable=False)
-    parameter_id = db.Column(db.Integer, ForeignKey('parameter.id'), nullable=False)
     value = db.Column(db.Float, nullable=False)
 
-    # Relationships
-    sensor = relationship('Sensor', back_populates='sensor_data')
+    sensor_id = db.Column(db.Integer, db.ForeignKey('sensors.id'), nullable=False)
+    parameter_id = db.Column(db.Integer, db.ForeignKey('parameters.id'), nullable=False)
 
-    def __repr__(self):
-        return f"<SensorData {self.sensor_id} {self.timestamp} {self.parameter_id} {self.value}>"
+    sensor = db.relationship("Sensor", back_populates="data")
+    parameter = db.relationship("Parameter", back_populates="data")
 
-# LoraData table
-class LoraData(db.Model):
-    __tablename__ = 'lora_data'
-
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    sensor_id = db.Column(db.Integer, ForeignKey('sensor.id'), nullable=False)
-    timestamp = db.Column(db.DateTime, index=True, nullable=False)
-    parameter_id = db.Column(db.Integer, ForeignKey('parameter.id'), nullable=False)
-    value = db.Column(db.Float, nullable=False)
-
-    # Relationships
-    sensor = relationship('Sensor', back_populates='lora_data')
-
-    def __repr__(self):
-        return f"<LoraData {self.sensor_id} {self.timestamp} {self.rssi} {self.snr}>"
-
-
-def query_most_recent_lora(sensor_name):
-    result = (
-        db.session.query(Parameter.name, LoraData.timestamp, LoraData.value)
-        .join(Sensor)
-        .join(Parameter)
-        .filter(Sensor.name == sensor_name, LoraData.parameter_id == Parameter.id)
-        .order_by(desc(LoraData.timestamp))
-        .limit(3)  # Fetch one record per parameter
-        .all()
-    )
-    return result
-# Query function
-def query_data(start_date, end_date, sensor_name, include_units=False):
-
-    # Query database
-    query = (
-        db.session.query(Parameter.name, SensorData.timestamp, SensorData.value)
-        .join(Sensor)
-        .join(Parameter)
-        .filter(Sensor.name == sensor_name, SensorData.parameter_id == Parameter.id, SensorData.timestamp >= start_date, SensorData.timestamp <= end_date)
+    # composite index for speed.
+    __table_args__ = (
+        Index('idx_sensor_param_time', 'sensor_id', 'parameter_id', 'timestamp'),
     )
 
-    if include_units:
-        query = query.add_columns(Parameter.unit)
+# ----------------
+# Query functions
+#-----------------
+def get_sensor_by_name(name):
+    return db.session.query(Sensor).filter(Sensor.name == name).first()
 
-    result = query.all()
+def get_param_by_name(name):
+    return db.session.query(Parameter).filter(Parameter.name == name).first()
 
-    return result
-
-
-def query_lora_data(start_date, end_date, sensor_name, include_units=False):
-
-    query = (
-        db.session.query(Parameter.name, LoraData.timestamp, LoraData.value)
-        .join(Sensor)
-        .join(Parameter)
-        .filter(Sensor.name == sensor_name, LoraData.parameter_id == Parameter.id, LoraData.timestamp >= start_date, LoraData.timestamp <= end_date)
-    )
-
-    if include_units:
-        query = query.add_columns(Parameter.unit)
-
-    result = query.all()
-
-    return result
-
-# Save data to CSV
-def save_data_to_csv(data, sensor_name):
-    organized_data = defaultdict(dict)
-    for parameter, timestamp, value, unit in data:
-        organized_data[timestamp][f"{parameter} ({unit})"] = value
-
-    # Create a DataFrame from the organized data
-    df = pd.DataFrame.from_dict(organized_data, orient='index').reset_index()
-
-    # Rename the first column to 'timestamp'
-    df.rename(columns={'index': 'timestamp'}, inplace=True)
-
-    # Convert the DataFrame to a CSV string
-    csv_data = df.to_csv(index=False)
-    sensor_name_line = f"Sensor Name: {sensor_name}\n"
-    csv_data = sensor_name_line + csv_data
-
-    return csv_data
-
+def get_sensor_timezone(sensor_name):
+    sensor = get_sensor_by_name(sensor_name)
+    if sensor and sensor.timezone:
+        return sensor.timezone
+    return 'UTC'
 
 def get_all_sensors():
-    """
-    Retrieves all sensors from the database with their names, latitude, longitude, and device types.
-
-    Returns:
-        list: A list of dictionaries, each containing sensor details.
-    """
-    try:
-        sensors = Sensor.query.all()
-        return [
-            {
-                "name": sensor.name,
-                "latitude": sensor.latitude,
-                "longitude": sensor.longitude,
-                "device_type": sensor.device_type,
-            }
-            for sensor in sensors
-        ]
-    except Exception as e:
-        print(f"Error retrieving sensors: {e}")
-        return []
+    """Returns a list of all sensors as dictionaries."""
+    sensors = db.session.query(Sensor).all()
+    return [{
+        "name": s.name,
+        "latitude": s.latitude,
+        "longitude": s.longitude,
+        "device_type": s.device_type,
+        "image_data": s.image_data,
+        "active": s.active
+    } for s in sensors]
 
 def get_sensors_grouped_by_type():
+    sensors = get_all_sensors()
+    grouped = {}
+    for s in sensors:
+        d_type = s['device_type']
+        if d_type not in grouped:
+            grouped[d_type] = []
+        grouped[d_type].append(s['name'])
+    return grouped
+
+def get_data(sensor_name, start_date, end_date, lora=False, localize_input=False):
     """
-    Retrieve all sensors from the database and group them by type.
+        Retrieves sensor data.
 
-    Returns:
-        dict: A dictionary where keys are sensor types, and values are lists of sensors of that type.
-    """
-    sensors = get_all_sensors()  # Retrieve sensors from your database
-    grouped_sensors = {}
+        Args:
+            lora (bool): If True, LoRaWAN data (rssi, snr, and battery) are returned.
+                         False, all other data is retrieved
+            localize_input (bool): If True, assumes start_date/end_date are in the
+                                   SENSOR'S timezone. Converts them to UTC before querying.
+        """
+    sensor = get_sensor_by_name(sensor_name)
+    if not sensor:
+        return []
 
-    for sensor in sensors:
-        device_type = sensor["device_type"]
-        if device_type not in grouped_sensors:
-            grouped_sensors[device_type] = []
-        grouped_sensors[device_type].append(sensor["name"])
+    if localize_input and sensor.timezone:
+        try:
+            local_tz = pytz.timezone(sensor.timezone)
+            if start_date.tzinfo is None:
+                start_date = local_tz.localize(start_date).astimezone(pytz.utc).replace(tzinfo=None)
+            if end_date.tzinfo is None:
+                end_date = local_tz.localize(end_date).astimezone(pytz.utc).replace(tzinfo=None)
+        except:
+            pass
 
-    return grouped_sensors
+    query = (
+        db.session.query(
+            SensorData.timestamp.label('timestamp'),
+            SensorData.value.label('value'),
+            Parameter.name.label('name'),
+            Parameter.canonical_unit.label('unit')
+        )
+        .join(Parameter, SensorData.parameter_id == Parameter.id)
+        .filter(SensorData.sensor_id == sensor.id)
+        .filter(SensorData.timestamp >= start_date)
+        .filter(SensorData.timestamp <= end_date)
+    )
+
+    if lora:
+        query = query.filter(Parameter.name.in_(HEALTH_PARAMS))
+    else:
+        query = query.filter(Parameter.name.notin_(HEALTH_PARAMS))
+
+    results = query.order_by(SensorData.timestamp).all()
+
+    return results
+
 
 def get_parameters(sensor_name):
-    sensor = db.session.query(Sensor).filter(Sensor.name == sensor_name).first()
-    if not sensor:
-        return {"error": f"Sensor '{sensor_name}' not found"}
-
-    # Fetch parameters for this sensor from the parameters table
-    sensor_parameters = (
-        db.session.query(Parameter.name, Parameter.unit)
-        .join(sensor_parameter, sensor_parameter.c.parameter_id == Parameter.id)
-        .filter(sensor_parameter.c.sensor_id == sensor.id)
-        .all()
-    )
-
-    return sensor_parameters
-
-def get_measurement_summary(sensor_name):
     """
-        Returns the most recent measurement data for a specific sensor.
-
-        Parameters:
-            sensor_name (str): The name of the sensor.
-
-        Returns:
-            dict: A dictionary containing the most recent measurement information.
-        """
-    remove = ['battery', 'rssi', 'snr']
-
-    # Check if the sensor exists
-    sensor = db.session.query(Sensor).filter(Sensor.name == sensor_name).first()
+    Used to populate the 'Update Sensor' form.
+    New logic: Query distinct parameters from the data table.
+    """
+    sensor = get_sensor_by_name(sensor_name)
     if not sensor:
-        return {"error": f"Sensor '{sensor_name}' not found"}
+        return []
 
-    # Fetch parameters associated with this sensor (excluding rssi, snr, battery)
-    sensor_parameters = (
-        db.session.query(Parameter)
-        .join(sensor_parameter, sensor_parameter.c.parameter_id == Parameter.id)
-        .filter(sensor_parameter.c.sensor_id == sensor.id)
-        .filter(~Parameter.name.in_(remove))
-        .all()
+    # Find all parameter IDs this sensor has data for
+    param_ids = (
+        db.session.query(SensorData.parameter_id)
+        .filter(SensorData.sensor_id == sensor.id)
+        .distinct()
     )
 
-    if not sensor_parameters:
-        return {"error": f"No parameters found for sensor '{sensor_name}'"}
+    params = (
+        db.session.query(Parameter.name, Parameter.canonical_unit)
+        .filter(Parameter.id.in_(param_ids))
+        .all()
+    )
+    return params
 
-    # Build a list of recent values for each parameter
-    measurements = []
-    for parameter in sensor_parameters:
-        recent_data = (
-            db.session.query(SensorData)
-            .filter(
-                SensorData.sensor_id == sensor.id,
-                SensorData.parameter_id == parameter.id
-            )
-            .order_by(desc(SensorData.timestamp))
-            .first()
+def get_most_recent(sensor_name, Lora = False):
+
+    sensor = get_sensor_by_name(sensor_name)
+    if not sensor:
+        return []
+
+    latest_ts = db.session.query(func.max(SensorData.timestamp)) \
+        .filter_by(sensor_id=sensor.id).scalar()
+
+    if not latest_ts:
+        return []
+
+    query = (
+        db.session.query(SensorData, Parameter.name, Parameter.canonical_unit) \
+        .join(Parameter, SensorData.parameter_id == Parameter.id) \
+        .filter(SensorData.sensor_id == sensor.id) \
+        .filter(SensorData.timestamp == latest_ts) \
         )
-        if recent_data:
-            measurements.append({
-                "parameter": f"{parameter.name} ({parameter.unit})" if parameter.unit else parameter.name,
-                "value": recent_data.value,
-                "timestamp": recent_data.timestamp,
-            })
 
-    if not measurements:
-        return {"message": f"No data available for sensor '{sensor_name}'"}
-
-    return {
-        "sensor_name": sensor_name,
-        "latitude": sensor.latitude,
-        "longitude": sensor.longitude,
-        "most_recent_measurements": measurements,
-    }
-
-
-def get_sensor_by_name(device_name):
-    """Retrieve a sensor by its name."""
-    return db.session.query(Sensor).filter_by(name=device_name).first()
-
-
-def decode_base64(image_data):
-    if "," in image_data:
-        # Split off the metadata prefix
-        _, base64_data = image_data.split(",", 1)
+    if Lora:
+        recent_data = query.filter(Parameter.name.in_(HEALTH_PARAMS)).all()
     else:
-        base64_data = image_data
+        recent_data = query.filter(~Parameter.name.in_(HEALTH_PARAMS)).all()
 
-    # Decode the Base64 string
-    return base64.b64decode(base64_data)
+    return recent_data
 
-def create_or_update_sensor(device_name, latitude, longitude, device_type, image_data=None, base_path=None):
-    """
-    Create or update a sensor in the database.
-
-    Args:
-        device_name (str): Name of the sensor.
-        latitude (float): Latitude of the sensor.
-        longitude (float): Longitude of the sensor.
-        device_type (str): Type of the sensor.
-        image_data (str, optional): Base64-encoded image data.
-        base_path (str, optional): Base path to save images. Defaults to None.
-
-    Returns:
-        str: Success or error message.
-    """
+def create_or_update_sensor(name, latitude,
+                            longitude,
+                            device_type,
+                            image_data=None,
+                            timezone='America/Chicago',
+                            active = True,
+                            user_id = None):
+    """Creates a new sensor."""
     try:
-        # Check if the sensor exists
-        sensor = get_sensor_by_name(device_name)
+        sensor = get_sensor_by_name(name)
+        now = datetime.utcnow()
+        action = None
 
-        if sensor:  # Update existing sensor
-            sensor.latitude = latitude
-            sensor.longitude = longitude
-            sensor.device_type = device_type
+        # Prevent invalid lat/lon
+        try:
+            lat_float, lon_float = float(latitude), float(longitude)
+        except (ValueError, TypeError):
+            return "Error: Latitude and Longitude must be numbers."
 
-            if image_data and base_path:
-                save_path = os.path.join(base_path, f"{device_name}.png")
-                decoded_image = decode_base64(image_data)
-                with open(save_path, "wb") as f:
-                    f.write(decoded_image)
-                sensor.image_path = save_path
-        else:  # Create a new sensor
-            new_sensor = Sensor(
-                name=device_name,
-                latitude=latitude,
-                longitude=longitude,
-                device_type=device_type,
-                image=None
+        if not (-90 <= lat_float <= 90) or not (-180 <= lon_float <= 180):
+            return "Error: Coordinates out of range (Lat: -90 to 90, Lon: -180 to 180)"
+
+        # New sensor
+        if not sensor:
+            sensor = Sensor(name = name)
+            db.session.add(sensor)
+
+            # Create the first history record
+            new_history = LocationHistory(
+                sensor_id=sensor.id,  # Note: This might fail if ID isn't gen yet, see flush below
+                latitude=lat_float,
+                longitude=lon_float,
+                deployed_at=now
             )
 
-            if image_data and base_path:
-                save_path = os.path.join(base_path, f"{device_name}.png")
-                decoded_image = decode_base64(image_data)
-                with open(save_path, "wb") as f:
-                    f.write(decoded_image)
-                new_sensor.image_path = save_path
+            # Link sensor with user
+            if user_id:
+                user = User.query.get(user_id)
+                if user:
+                    user.sensors.append(sensor)
 
-            db.session.add(new_sensor)
+            # Link new sensor with admin accounts
+            admins = User.query.filter_by(is_admin=True).all()
+            for admin in admins:
+                # Avoid adding twice if the creator IS the admin
+                if sensor not in admin.sensors:
+                    admin.sensors.append(sensor)
 
-        db.session.commit()
-        return f"Sensor '{device_name}' successfully created/updated!"
-    except SQLAlchemyError as e:
-        db.session.rollback()
-        return f"Database error: {str(e)}"
-    except Exception as e:
-        return f"An error occurred: {str(e)}"
+            # We add sensor first to generate ID
+            db.session.flush()
+            new_history.sensor_id = sensor.id
+            db.session.add(new_history)
 
-def add_parameter_if_not_exists(parameter_name, unit):
-    """
-    Check if a parameter with the given name and unit exists. If not, create it.
-    """
-    existing_parameter = db.session.query(Parameter).filter_by(name=parameter_name, unit=unit).first()
+            action = 'created'
 
-    if not existing_parameter:
-        new_parameter = Parameter(name=parameter_name, unit=unit)
-        db.session.add(new_parameter)
-        db.session.commit()
-
-        return new_parameter  # Return the new parameter
-    return existing_parameter  # Return the existing parameter
-
-def update_sensor_parameters(sensor, updated_parameters):
-    """
-    Update the parameters for a given sensor, while keeping the ones that aren't changed and
-    only updating specific parameters (name and/or unit).
-    """
-    # Map existing parameters for the sensor (name, unit) -> Parameter object
-    existing_parameters = {(param.name, param.unit): param for param in sensor.parameters}
-    print(f"Existing parameters for sensor '{sensor.name}': {list(existing_parameters.keys())}")
-    print(f"Updated parameters to process: {updated_parameters}")
-
-    # Set to track parameters to retain (those that aren't being updated)
-    parameters_to_retain = set(existing_parameters.keys())
-
-    # Loop through updated parameters to update them
-    for param_name, param_unit in updated_parameters:
-        # Add or fetch the parameter
-        param = add_parameter_if_not_exists(param_name, param_unit)
-
-        # If the parameter is not already associated with the sensor, associate it
-        if (param_name, param_unit) not in existing_parameters:
-            sensor.parameters.append(param)
-            parameters_to_retain.add((param_name, param_unit))
-            print(f"Added parameter '{param_name} ({param_unit})' to sensor '{sensor.name}'")
-
-        # If the parameter already exists but has a different unit
-        for (name, unit) in existing_parameters:
-            if name == param_name and unit != param_unit:
-                parameters_to_retain.remove((name, unit))
-
-        print(f"parameters_to_retain: {parameters_to_retain}")
-
-    # Remove any parameters from the sensor that are no longer in the updated list
-    for param in sensor.parameters[:]:  # Copy the list to safely modify it
-        if (param.name, param.unit) not in parameters_to_retain:
-            print(f"Removing outdated parameter '{param.name} ({param.unit})' from sensor '{sensor.name}'")
-            sensor.parameters.remove(param)
-
-    db.session.commit()
-    print(f"Final parameters for sensor '{sensor.name}': {[f'{p.name} ({p.unit})' for p in sensor.parameters]}")
-
-
-def update_sensor_data(sensor, updated_parameters):
-    """
-    Update the `sensor_data` table to reflect updated parameter associations for the given sensor.
-
-    Parameters:
-        sensor (Sensor): The sensor object being updated.
-        updated_parameters (list of tuples): List of updated parameters as (name, unit).
-    """
-    # Create a mapping of existing parameters for the sensor
-    parameter_mapping = {f"{param.name}|{param.unit}": param for param in sensor.parameters}
-    print(f"Parameter mapping for sensor '{sensor.name}': {parameter_mapping}")
-
-    # Query existing `sensor_data` for the sensor
-    sensor_data_entries = db.session.query(SensorData).filter_by(sensor_id=sensor.id).all()
-    print(f"Sensor data entries before update: {[(d.id, d.parameter_id, d.value) for d in sensor_data_entries]}")
-
-    # Create a lookup for updated parameters
-    updated_mapping = {f"{name}|{unit}": (name, unit) for name, unit in updated_parameters}
-
-    for data in sensor_data_entries:
-        # Fetch the current parameter associated with this `sensor_data` entry
-        current_param = db.session.query(Parameter).filter_by(id=data.parameter_id).first()
-
-        if not current_param:
-            print(f"Warning: Parameter ID {data.parameter_id} not found for SensorData ID {data.id}")
-            continue
-
-        current_key = f"{current_param.name}|{current_param.unit}"
-
-        # Check if the current parameter exists in the updated parameters
-        if current_key in updated_mapping:
-            # If it matches, retain the parameter association
-            continue
-
-        # If the current parameter doesn't match, find the new parameter
-        new_key = next(
-            (key for key in updated_mapping if current_param.name in key),
-            None,
-        )
-
-        if new_key:
-            new_param = parameter_mapping[new_key]
-            if data.parameter_id != new_param.id:
-                print(
-                    f"Updating SensorData entry (ID: {data.id}) "
-                    f"from parameter_id {data.parameter_id} ({current_param.name}, {current_param.unit}) "
-                    f"to {new_param.id} ({new_param.name}, {new_param.unit})"
-                )
-                data.parameter_id = new_param.id  # Update `parameter_id`
-                db.session.add(data)  # Mark for commit
-
-    # Commit all changes to the database
-    db.session.commit()
-    print(f"Sensor data entries after update: {[(d.id, d.parameter_id, d.value) for d in sensor_data_entries]}")
-
-
-def delete_unused_parameters():
-    """
-    Delete parameters that are not associated with any sensors.
-    """
-    unused_parameters = db.session.query(Parameter).filter(~Parameter.sensors.any()).all()
-
-    print(f"Unused parameters: {[f'{p.name} ({p.unit})' for p in unused_parameters]}")
-
-    for param in unused_parameters:
-        print(f"Deleting unused parameter: {param.name} ({param.unit})")
-        db.session.delete(param)
-
-    db.session.commit()
-    print("Unused parameters deleted successfully.")
-
-"""
-def update_sensor_parameters(sensor, updated_parameters):
-  
-    Update the parameters for a given sensor.
-    Ensures that `sensor_parameter` is updated correctly.
-
-    # Fetch existing parameters for the sensor
-    existing_parameters = {(param.name, param.unit): param for param in sensor.parameters}
-
-    print(f"Existing parameters for sensor '{sensor.name}': {list(existing_parameters.keys())}")
-    print(f"Updated parameters to process: {updated_parameters}")
-
-    for param_name, param_unit in updated_parameters:
-        # Add or fetch the parameter
-        param = add_parameter_if_not_exists(param_name, param_unit)
-
-        # Check if the parameter is already associated with the sensor
-        if (param_name, param_unit) not in existing_parameters:
-            sensor.parameters.append(param)  # Add association to `sensor_parameter`
-            print(f"Added parameter '{param_name} ({param_unit})' to sensor '{sensor.name}'")
+        # Updating sensor, address location history
         else:
-            print(f"Parameter '{param_name} ({param_unit})' already associated with sensor '{sensor.name}'")
+            # Check if location changed significantly
+            loc_changed = (abs(sensor.latitude - lat_float) > 0.0001 or
+                           abs(sensor.longitude - lon_float) > 0.0001)
 
-    db.session.commit()
-    print(f"Final parameters for sensor '{sensor.name}': {[f'{p.name} ({p.unit})' for p in sensor.parameters]}")
-"""
+            status_changed_to_active = (not sensor.active and active)
+            status_changed_to_inactive = (sensor.active and not active)
 
+            # If moving, reactivating, or deactivating then close the location history record
+            if loc_changed or status_changed_to_active or status_changed_to_inactive:
+
+                # Find the currently open record (removed_at is NULL)
+                current_history = LocationHistory.query.filter_by(
+                    sensor_id=sensor.id,
+                    removed_at=None
+                ).first()
+
+                if current_history:
+                    current_history.removed_at = now
+
+                # If we are moving or reactivating then open a new location record
+                # If we are strictly deactivating, we do NOT open a new record
+                if active:
+                    new_history = LocationHistory(
+                        sensor_id=sensor.id,
+                        latitude=lat_float,
+                        longitude=lon_float,
+                        deployed_at=now
+                    )
+                    db.session.add(new_history)
+
+        sensor.latitude = lat_float
+        sensor.longitude = lon_float
+        sensor.device_type = device_type
+        sensor.timezone = timezone
+        sensor.active = active
+
+        if image_data:
+            sensor.image_data = compress_image(image_data)
+
+        if not action:
+            action = 'updated'
+
+        db.session.commit()
+        return f"Sensor '{name}' {action} successfully."
+    except Exception as e:
+        db.session.rollback()
+        return f"Database Error: {str(e)}"

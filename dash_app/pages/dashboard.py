@@ -2,7 +2,7 @@ from dash import dcc, html, register_page
 import dash_bootstrap_components as dbc
 from datetime import datetime
 import pytz
-from .home import get_map_graph
+from server.utils import get_map_graph
 
 register_page(
     __name__,
@@ -17,6 +17,9 @@ def layout(name=None, **other_unknown_query_strings):
     layout = dbc.Container([
         dcc.Location(id='url', refresh=False),
         dcc.Store(id="sensor-name-store", data=name),
+
+        dcc.Store(id="live-sensor-data"),
+        html.Div(id="ws-trigger", style={"display": "none"}),
 
         # First Row (Map and Info Box)
         dbc.Row([
@@ -155,13 +158,9 @@ def layout(name=None, **other_unknown_query_strings):
                 className="radio-group mt-3",  # Add margin-top for spacing
             ),
         ),
-
-        dbc.Spinner(
-            id='graph-loader',
-             children=dbc.Row(
-                id="multi-sensor-graph",
-                className="g-4",
-            ), color='primary'
+        dbc.Row(
+            id="multi-sensor-graph",
+            className="g-4",
         )
     ], fluid=False, className="dash-container")
 

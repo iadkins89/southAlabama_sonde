@@ -1,7 +1,6 @@
-from dash import dcc, html, register_page, Input, Output, State
+from dash import dcc, html, register_page
 import dash_bootstrap_components as dbc
 from flask import session
-from dash.exceptions import PreventUpdate
 
 register_page(
     __name__,
@@ -31,6 +30,23 @@ def layout():
                 dbc.Col(dbc.Input(type="number", id="longitude", placeholder="Enter longitude"), width=12, md=10),
             ], className="mb-3"),
             dbc.Row([
+                dbc.Col(dbc.Label("Timezone", className="text-start text-md-end"), width=12, md=2),
+                dbc.Col(
+                    dcc.Dropdown(
+                        id="timezone",
+                        options=[
+                            {'label': 'Central Time', 'value': 'America/Chicago'},
+                            {'label': 'Eastern Time', 'value': 'America/New_York'},
+                            {'label': 'UTC (Universal Standard)', 'value': 'UTC'}
+                        ],
+                        value='America/Chicago',  # Default to Mobile time
+                        clearable=False,
+                        style={'color': 'black'}  # Fixes dark mode visibility issues if present
+                    ),
+                    width=12, md=10
+                ),
+            ], className="mb-3"),
+            dbc.Row([
                 dbc.Col(dbc.Label("Device Type", className="text-start text-md-end"), width=12, md=2),
                 dbc.Col(
                     dbc.RadioItems(
@@ -48,7 +64,7 @@ def layout():
             ], className="mb-3"),
             dbc.Row([
                 dbc.Col(dbc.Label("Device Image", className="text-start text-md-end"), width=12, md=2),
-                dbc.Col(
+                dbc.Col([
                     dcc.Upload(
                         id="device-image",
                         children=html.Div([
@@ -66,8 +82,9 @@ def layout():
                             "margin": "10px",
                         },
                         multiple=False,
-                    ), width=12, md=10
-                ),
+                        accept="image/*"
+                    ),
+                ], width=12, md=10),
             ], className="mb-3"),
             dbc.Row([
                 dbc.Col(

@@ -46,3 +46,5 @@ Werkzeug==3.0.3
 zipp==3.20.0
 Flask-Sessions==0.1.5
 gunicorn
+flask-socketio
+eventlet
