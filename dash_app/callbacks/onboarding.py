@@ -19,6 +19,7 @@ def login_user(n_clicks, username, password):
         user = User.authenticate(username, password)
         if user:
             session['user_logged_in'] = True
+            session['user_id'] = user.id
             return "", {"display": "none"}, {"display": "block"}
         return "Invalid credentials. Please try again.", {}, {"display": "none"}
     return "", {}, {"display": "none"}

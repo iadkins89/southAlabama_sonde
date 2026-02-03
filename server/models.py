@@ -18,6 +18,7 @@ class User(db.Model):
     username = db.Column(db.String(150), unique=True, nullable=False)
     password_hash = db.Column(db.String(256), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=True)
+    is_admin = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     sensors = db.relationship('Sensor', secondary=user_sensor_association, backref='users')
@@ -232,7 +233,13 @@ def get_most_recent(sensor_name, Lora = False):
 
     return recent_data
 
-def create_or_update_sensor(name, latitude, longitude, device_type, image_data=None, timezone='America/Chicago', active = True):
+def create_or_update_sensor(name, latitude,
+                            longitude,
+                            device_type,
+                            image_data=None,
+                            timezone='America/Chicago',
+                            active = True,
+                            user_id = None):
     """Creates a new sensor. DEPRECIATED Does NOT handle parameters (dynamic)."""
     try:
         sensor = get_sensor_by_name(name)
@@ -260,6 +267,20 @@ def create_or_update_sensor(name, latitude, longitude, device_type, image_data=N
                 longitude=lon_float,
                 deployed_at=now
             )
+
+            # Link sensor with user
+            if user_id:
+                user = User.query.get(user_id)
+                if user:
+                    user.sensors.append(sensor)
+
+            # Link new sensor with admin accounts
+            admins = User.query.filter_by(is_admin=True).all()
+            for admin in admins:
+                # Avoid adding twice if the creator IS the admin
+                if sensor not in admin.sensors:
+                    admin.sensors.append(sensor)
+
             # We add sensor first to generate ID
             db.session.flush()
             new_history.sensor_id = sensor.id
@@ -288,16 +309,16 @@ def create_or_update_sensor(name, latitude, longitude, device_type, image_data=N
                 if current_history:
                     current_history.removed_at = now
 
-                    # If we are moving or reactivating then open a new location record
-                    # If we are strictly deactivating, we do NOT open a new record
-                    if active:
-                        new_history = LocationHistory(
-                            sensor_id=sensor.id,
-                            latitude=lat_float,
-                            longitude=lon_float,
-                            deployed_at=now
-                        )
-                        db.session.add(new_history)
+                # If we are moving or reactivating then open a new location record
+                # If we are strictly deactivating, we do NOT open a new record
+                if active:
+                    new_history = LocationHistory(
+                        sensor_id=sensor.id,
+                        latitude=lat_float,
+                        longitude=lon_float,
+                        deployed_at=now
+                    )
+                    db.session.add(new_history)
 
         sensor.latitude = lat_float
         sensor.longitude = lon_float

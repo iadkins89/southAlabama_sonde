@@ -1,7 +1,9 @@
 from dash import callback, Input, Output, State, html, no_update
 import dash_bootstrap_components as dbc
-from server.models import create_or_update_sensor
+from server.models import create_or_update_sensor, get_sensor_by_name
 import time
+from flask import session
+
 @callback(
     [
         Output("submission-response", "children"),
@@ -23,6 +25,14 @@ def submit_onboarding_form(n_clicks, device_name, latitude, longitude, timezone,
         if not all([device_name, latitude, longitude, device_type]):
             return dbc.Alert("Device name, latitude, longitude, and device type fields are required!", color="danger"), no_update
 
+        existing_sensor = get_sensor_by_name(device_name)
+        if existing_sensor:
+            return dbc.Alert(
+                f"Sensor with name '{device_name}' already exists. Please use another name or update the existing sensor.",
+                color="warning"), no_update
+
+        current_user_id = session.get('user_id')
+
         message = create_or_update_sensor(
             name=device_name,
             latitude=latitude,
@@ -30,7 +40,8 @@ def submit_onboarding_form(n_clicks, device_name, latitude, longitude, timezone,
             device_type=device_type,
             image_data=image_data,
             timezone=timezone,
-            active=True
+            active=True,
+            user_id = current_user_id
         )
 
         # Check if the operation was successful

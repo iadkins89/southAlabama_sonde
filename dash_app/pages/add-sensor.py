@@ -35,8 +35,8 @@ def layout():
                     dcc.Dropdown(
                         id="timezone",
                         options=[
-                            {'label': 'Central Time (Mobile, AL, Gulf)', 'value': 'America/Chicago'},
-                            {'label': 'Eastern Time (Florida, Atlantic)', 'value': 'America/New_York'},
+                            {'label': 'Central Time', 'value': 'America/Chicago'},
+                            {'label': 'Eastern Time', 'value': 'America/New_York'},
                             {'label': 'UTC (Universal Standard)', 'value': 'UTC'}
                         ],
                         value='America/Chicago',  # Default to Mobile time

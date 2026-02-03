@@ -12,7 +12,7 @@ with app.app_context():
     print("2. Creating Admin User...")
     # Check if admin exists just in case
     if not User.query.filter_by(username='admin').first():
-        admin = User(username='admin', email='admin@example.com')
+        admin = User(username='admin', email='admin@example.com', is_admin=True)
         admin.set_password('admin') # Or your preferred password
         db.session.add(admin)
         db.session.commit()
