@@ -3,12 +3,11 @@ from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
 from datetime import datetime, timedelta
-from server.models import (query_data,
+from server.utils import save_data_to_csv, get_measurement_summary
+from server.models import (get_data,
                            get_sensor_timezone,
-                           save_data_to_csv,
-                           get_measurement_summary,
-                           query_most_recent_lora,
-                           get_sensor_by_name)
+                           get_sensor_by_name,
+                           get_most_recent)
 import pytz
 from dateutil.parser import parse as parse_date
 
@@ -58,7 +57,7 @@ def update_multi_sensor_graph(date_range_value, sensor_name, live_data):
         start = now - timedelta(days=2)
 
     # Query data with units
-    data = query_data(sensor_name, start, now, lora=False)
+    data = get_data(sensor_name, start, now, lora=False)
 
     if not data:
         return html.Div(f"No data available for sensor '{sensor_name}' in the selected date range.")
@@ -207,9 +206,9 @@ def file_download(n_clicks, sensor_name, start_date, end_date, filename, data_ty
             return True, 'Please provide a valid filename.', None
 
         if data_type == "   Sensor Data":
-            data = query_data(sensor_name, start_date, end_date, lora=False, localize_input=True)
+            data = get_data(sensor_name, start_date, end_date, lora=False, localize_input=True)
         else:
-            data = query_data(sensor_name,start_date, end_date, lora=True, localize_input=True)
+            data = get_data(sensor_name, start_date, end_date, lora=True, localize_input=True)
 
         if not data:
             return True, 'No data found for the given date range.', None
@@ -246,21 +245,14 @@ def toggle_sensor_health_offcanvas(n_clicks, is_open):
 )
 def update_sensor_health(sensor_name, live_data):
 
-    # Query data
-    data = query_most_recent_lora(sensor_name)
+    raw_data = get_most_recent(sensor_name, Lora=True)
 
-    # Initialize values
-    battery = None
-    rssi = None
-    snr = None
+    # Structure from query is: (SensorDataObj, param_name, unit)
+    readings = {row[1].lower(): row[0].value for row in raw_data}
 
-    for entry in data:
-        if entry[0] == 'battery':
-            battery = entry[2]
-        if entry[0] == 'rssi':
-            rssi = entry[2]
-        if entry[0] == 'snr':
-            snr = entry[2]
+    battery = readings.get('battery')
+    rssi = readings.get('rssi')
+    snr = readings.get('snr')
 
     # Handle missing data
     if battery is None:

@@ -4,7 +4,7 @@ from dash import dcc, html, register_page
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
 from flask import session
-from server.models import get_all_sensors, get_sensor_by_name, get_measurement_summary
+from server.models import get_all_sensors
 
 register_page(
     __name__,

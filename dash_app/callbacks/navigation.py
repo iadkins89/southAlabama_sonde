@@ -21,9 +21,12 @@ def toggle_navbar(n_clicks, home_click, onboard_click, about_click, sensor_click
 
 @callback(
     Output("sensors-dropdown", "children"),
-    Input("sensor-update", "data")
+    [
+        Input("main-url", "pathname"), #Navigation trigger
+        Input("sensor-update", "data") #Data update trigger (new sensor added)
+    ]
 )
-def populate_sensors_dropdown(data):
+def populate_sensors_dropdown(pathname, update_signal):
     """
     Populate the sensors dropdown dynamically by querying the database.
     """

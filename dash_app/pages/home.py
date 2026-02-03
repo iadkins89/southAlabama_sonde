@@ -4,6 +4,7 @@ import plotly.graph_objs as go
 import dash_bootstrap_components as dbc
 import os
 
+
 register_page(
     __name__,
     top_nav=True,

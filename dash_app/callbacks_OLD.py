@@ -3,7 +3,7 @@ from dash.exceptions import PreventUpdate
 import dash
 import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
-from server.models import (query_data,
+from server.models import (get_data,
                            save_data_to_csv,
                            get_measurement_summary,
                            query_most_recent_lora,
@@ -163,7 +163,7 @@ def register_callbacks(app):
             start = now - timedelta(days=2)
 
         # Query data with units
-        data = query_data(sensor_name, start, now, lora=False)
+        data = get_data(sensor_name, start, now, lora=False)
 
         if not data:
             return html.Div(f"No data available for sensor '{sensor_name}' in the selected date range.")
@@ -299,9 +299,9 @@ def register_callbacks(app):
                 return True, 'Please provide a valid filename.', None
 
             if data_type == "   Sensor Data":
-                data = query_data(sensor_name, start_date, end_date, lora=False, localize_input=True)
+                data = get_data(sensor_name, start_date, end_date, lora=False, localize_input=True)
             else:
-                data = query_data(sensor_name,start_date, end_date, lora=True, localize_input=True)
+                data = get_data(sensor_name, start_date, end_date, lora=True, localize_input=True)
 
             if not data:
                 return True, 'No data found for the given date range.', None
