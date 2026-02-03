@@ -67,7 +67,7 @@ def layout():
                 ], className="mb-3"),
                 dbc.Row([
                     dbc.Col(dbc.Label("Device Image", className="text-start"), width=12, sm=4),
-                    dbc.Col(
+                    dbc.Col([
                         dcc.Upload(
                             id="update-device-image",
                             children=html.Div([
@@ -88,7 +88,7 @@ def layout():
                             accept="image/*"
                         ),
                         html.Div(html.Img(id="update-image-preview",style={"width": "100%", "max-width": "300px", "marginTop": "10px"}), className="text-center"),
-                        width=12, sm=8
+                        ], width=12, sm=8
                     ),
                 ], className="mb-3"),
                 dbc.Row([

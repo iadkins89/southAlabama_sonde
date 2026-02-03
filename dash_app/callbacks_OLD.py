@@ -660,13 +660,13 @@ def register_callbacks(app):
     @app.callback(
         Output("update-submission-response", "children"),
         [Input("update-submit-btn", "n_clicks"),
-         Input("deactivate-btn", "n_clicks")],  # Matches id in update-sensor.py
+         Input("deactivate-btn", "n_clicks")],  # Matches id in update_sensor.py
         [State("select-device-dropdown", "value"),
          State("update-device-name", "value"),
          State("update-latitude", "value"),
          State("update-longitude", "value"),
          State("update-device-type", "value"),
-         State("update-device-image", "contents")]  # Matches id in update-sensor.py
+         State("update-device-image", "contents")]  # Matches id in update_sensor.py
     )
     def update_sensor_information(submit_clicks, deactivate_clicks, original_name, new_name, lat, lon, dtype,
                                   image_data):
