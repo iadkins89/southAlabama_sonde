@@ -17,6 +17,5 @@ def create_app(server):
 
 	from . import callbacks
 	app.layout = get_layout()
-	#register_callbacks(app)
 
 	return app

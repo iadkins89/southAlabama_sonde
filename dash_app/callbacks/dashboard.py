@@ -310,7 +310,7 @@ def update_sensor_health(sensor_name, live_data):
 )
 def get_sensor_pic(sensor_name):
     if not sensor_name:
-        return "/assets/default_sensor.png"
+        return "/assets/no_image_available.png"
 
     sensor = get_sensor_by_name(sensor_name)
 
@@ -318,7 +318,7 @@ def get_sensor_pic(sensor_name):
     if sensor and sensor.image_data:
         image_src = sensor.image_data
     else:
-        image_src = "/assets/default_sensor.png"
+        image_src = "/assets/no_image_available.png"
 
     return image_src
 @callback(
