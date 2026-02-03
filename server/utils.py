@@ -17,7 +17,7 @@ def save_data_to_csv(data, sensor_name):
     timezone_str = get_sensor_timezone(sensor_name)
 
     for timestamp, value, parameter, unit in data:
-        organized_data[timestamp][f"{parameter} ({unit})"] = value
+        organized_data[timestamp][f"{parameter} {f'({unit})' if unit else ''}"] = value
 
     # Create a DataFrame from the organized data
     df = pd.DataFrame.from_dict(organized_data, orient='index').reset_index()
