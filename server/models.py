@@ -216,6 +216,16 @@ def create_or_update_sensor(name, latitude, longitude, device_type, image_data=N
             db.session.add(sensor)
             action = 'created'
 
+        # Prevent invalid lat/lon
+        try:
+            lat_float = float(latitude)
+            lon_float = float(longitude)
+        except (ValueError, TypeError):
+            return "Error: Latitude and Longitude must be numbers."
+
+        if not (-90 <= lat_float <= 90) or not (-180 <= lon_float <= 180):
+            return "Error: Coordinates out of range (Lat: -90 to 90, Lon: -180 to 180)"
+
         sensor.latitude = latitude
         sensor.longitude = longitude
         sensor.device_type = device_type
