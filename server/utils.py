@@ -4,11 +4,14 @@ import io
 import base64
 from PIL import Image, ImageOps
 from collections import defaultdict
-from server.models import get_sensor_timezone, get_sensor_by_name, get_most_recent, get_all_sensors
 import plotly.graph_objs as go
 from dash import dcc
+# from server.models import get_sensor_timezone, get_sensor_by_name, get_most_recent, get_all_sensors
+# TO DO: Refactor so function's here are "pure" and do not rely on DB import. This will avoid inline
+# imports and circular imports
 
 def save_data_to_csv(data, sensor_name):
+    from server.models import get_sensor_timezone
     organized_data = defaultdict(dict)
 
     timezone_str = get_sensor_timezone(sensor_name)
@@ -72,6 +75,7 @@ def get_measurement_summary(sensor_name, include_health=False):
     Fetches the single most recent data this sensor has reported.
     Excludes sensor health related data
     """
+    from server.models import get_sensor_by_name, get_most_recent
     sensor = get_sensor_by_name(sensor_name)
     if not sensor:
         return {"error": f"Sensor '{sensor_name}' not found"}
@@ -107,6 +111,7 @@ def get_map_graph(height, l=10, r=10, t=0, b=0):
     Returns:
         dcc.Graph: A Dash graph component.
     """
+    from server.models import get_all_sensors
     # Retrieve sensor data
     sensors = get_all_sensors()
 
