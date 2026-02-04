@@ -1,114 +1,160 @@
+/* =========================================
+   7. SENSOR CARD ACCORDION STYLES
+   ========================================= */
+
+/* Make the Accordion Header (the clickable part) smaller */
+.sensor-accordion .accordion-button {
+    font-size: 0.85rem !important; /* Smaller text */
+    padding: 8px 12px !important;  /* Less padding (Compact look) */
+    font-weight: 600;              /* Semi-bold */
+    background-color: #fff;
+    color: #495057;
+    box-shadow: none !important;   /* Removes the blue glow on click */
+}
+
+/* Style for when the accordion is OPEN */
+.sensor-accordion .accordion-button:not(.collapsed) {
+    background-color: #f1f3f5;     /* Very light gray instead of blue */
+    color: #154360;                /* Dark Blue text */
+}
+
+/* Remove borders to make it look cleaner inside the card */
+.sensor-accordion .accordion-item {
+    border: none;
+    border-bottom: 1px solid #e9ecef;
+}
+
+/* Hover effect for the individual sensor list items */
+.sensor-list-item:hover {
+    background-color: #f8f9fa;
+    text-decoration: none;
+}
+
+#instructions-card .card-header {
+    cursor: move; /* Changes cursor to a 'move' icon when hovering the header */
+    user-select: none; /* Prevents highlighting text while dragging */
+}
+
+/* =========================================
+   1. MAIN LAYOUT & NAVBAR (Desktop Defaults)
+   ========================================= */
 .custom-navbar {
-    background-color: #fdefda;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 9999;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    background-color: #f8f9fa !important;
+    min-height: 100px; /* Adjust this if you want the bar shorter */
+    padding: 0 20px;
+    display: flex;
+    align-items: center; /* Centers items vertically */
 }
 
-.DateInput_input, .DateInput_input_1 {
-color: inherit !important;
-font-size: inherit ! important;
-Height: 35px !important;
-Width: 100% !important;
+body {
+    padding-top: 100px; /* Must match navbar min-height */
 }
 
-.dropdown-header-bold {
-    font-weight: bold;
-    font-size: 16px;
-}
-
-/* Add spacing between pills */
-.nav-menu .nav-pill {
-    margin-right: 5px; !important /* Adjust spacing between pills */
-}
-
-/* Adjust hover color for dropdown menu items */
-.nav-menu .dropdown-menu .dropdown-item:hover {
-    background-color: #d3d3d3 !important; /* Light gray hover background */
-    color: #154360 !important; /* Custom text color */
-}
-
-/* Center the nav menu on mobile */
+/* =========================================
+   2. MOBILE OPTIMIZATIONS
+   ========================================= */
 @media (max-width: 768px) {
+    .custom-navbar {
+        min-height: 60px;
+        padding: 0 10px;
+    }
+
+    body {
+        padding-top: 60px;
+    }
+
+    /* 1. FORCE SMALL LOGO ON MOBILE */
+    .navbar-logo {
+        height: 35px !important;
+        width: auto !important; /* Prevents stretching */
+        max-width: 100px;       /* Safety cap */
+        margin-right: 8px !important;
+    }
+
+    /* 2. TEXT SIZING */
+    .navbar-title {
+        font-size: 1rem !important;
+        font-weight: bold;
+        line-height: 1.1;
+        white-space: normal !important;
+        text-align: left;
+    }
+
+    /* 3. MENU DROPDOWN BACKGROUND */
+    .navbar-collapse {
+        background-color: #f8f9fa !important;
+        padding-bottom: 15px;
+        width: 100%;
+        box-shadow: none;
+        border-top: 1px solid rgba(0,0,0,0.05);
+    }
+
     .custom-navbar .nav-menu {
         display: flex;
-        justify-content: center; /* Center horizontally */
-        flex-wrap: wrap; /* Allow wrapping if menu items overflow */
-        width: 100%; /* Ensure nav-menu spans the entire width */
-        padding: 0; /* Remove extra padding */
-    }
-
-    .custom-navbar .nav-pill,
-    .custom-navbar .nav-pill-dropdown {
-        margin: 5px; /* Add spacing around each menu item */
-    }
-
-    .custom-navbar .row {
-        flex-direction: column; /* Stack logo and title vertically */
-        text-align: center;
+        justify-content: center;
+        flex-wrap: wrap;
         width: 100%;
-    }
-
-    .custom-navbar .navbar-brand {
-        text-align: center; /* Center the brand/logo */
-        margin-bottom: 10px;
+        padding-top: 15px;
     }
 }
 
-.col-auto {
-    width: auto; /* or any value you prefer for larger screens */
+/* =========================================
+   3. DESKTOP LOGO & TITLE
+   ========================================= */
+.navbar-logo {
+    height: 80px; /* Fixed height prevents "whole screen" issue */
+    width: auto;  /* Maintains aspect ratio */
+    transition: height 0.3s ease;
+    margin-right: 15px;
 }
 
-@media (max-width: 767px) {
-    .col-auto {
-        width: 100% !important;  /* Override to 100% for mobile */
-    }
+.navbar-title {
+    color: #154360;
+    font-size: 2rem;
+    margin: 0;
+    white-space: nowrap;
+    line-height: 1.2;
 }
 
-/* General mobile styling for smaller devices */
-@media screen and (max-width: 768px) {
-
-    /* Center buttons in the footer */
-    .card-footer {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        justify-content: center;
-    }
-
-    .card-footer > button {
-        margin: 5px 0; /* Add some spacing between buttons */
-    }
-
-    /* Center the button group for date ranges */
-    .btn-group {
-        justify-content: center;
-        display: flex;
-    }
-
-    .btn-group .btn {
-        margin: 5px; /* Add spacing between buttons */
-    }
+/* =========================================
+   4. BUTTON/PILL STYLING
+   ========================================= */
+.nav-pills .nav-link {
+    white-space: nowrap !important;
+    padding: 8px 20px !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 40px !important;
+    margin: 0 5px;
 }
 
+/* =========================================
+   5. DROPDOWN MENU COLORS
+   ========================================= */
+.dropdown-menu {
+    background-color: #f8f9fa !important;
+    border: none;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
 
-/*
-.dash-graph {
-    zoom: 0.45;
-  }
+.dropdown-item:hover {
+    background-color: #e2e6ea !important;
+    color: #154360 !important;
+}
 
-  @media (min-width: 475px) {
-    .dash-graph {
-      zoom: 0.6;
-    }
-  }
-
-  @media (min-width: 768px) {
-    .dash-graph {
-      zoom: 0.85;
-    }
-  }
-
-  @media (min-width: 1024px) {
-    .dash-graph {
-      zoom: 1;
-    }
-  }
-  */
+/* =========================================
+   6. UTILITIES
+   ========================================= */
+/* Helper to center content in footer/cards if needed */
+.d-flex-center {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
