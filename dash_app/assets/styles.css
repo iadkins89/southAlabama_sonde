@@ -1,4 +1,17 @@
 /* =========================================
+   9. OFFCANVAS FIXES
+   ========================================= */
+.offcanvas {
+    /* Navbar is 9999, so this must be higher */
+    z-index: 10000 !important;
+}
+
+/* Ensure the backdrop (grey overlay) is also above the navbar */
+.offcanvas-backdrop {
+    z-index: 9995 !important;
+}
+
+/* =========================================
    8. DESKTOP MENU "POPUP" STYLE
    ========================================= */
 @media (min-width: 769px) {

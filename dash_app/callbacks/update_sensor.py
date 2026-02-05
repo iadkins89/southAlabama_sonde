@@ -4,7 +4,7 @@ import dash_bootstrap_components as dbc
 
 @callback(
     Output("select-device-dropdown", "options"),
-    Input("url", "pathname")
+    Input("main-url", "pathname")
 )
 def populate_sensor_dropdown(pathname):
     # This fires when the page loads

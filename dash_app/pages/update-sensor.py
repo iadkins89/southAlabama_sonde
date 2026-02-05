@@ -14,7 +14,6 @@ def layout():
 
     layout = dbc.Container([
         dcc.Store(id="sensor-active-status-store"),
-        dcc.Location(id="url", refresh=True),
         html.H2("Update Existing Sensor", className="text-center mt-4"),
         dbc.Button("Back", href="/onboarding", color="secondary", className="mb-4"),
         dbc.Form([

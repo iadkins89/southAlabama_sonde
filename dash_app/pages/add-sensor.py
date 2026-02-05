@@ -13,7 +13,6 @@ def layout():
         return dcc.Location(pathname='/onboarding', id='redirect-login')
 
     layout = dbc.Container([
-        dcc.Location(id="url", refresh=True),
         html.H2("Add New Sensor", className="text-center mt-4"),
         dbc.Button("Back", href="/onboarding", color="secondary", className="mb-4"),
         dbc.Form([

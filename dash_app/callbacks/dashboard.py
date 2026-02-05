@@ -305,7 +305,7 @@ def get_sensor_pic(sensor_name):
 
     sensor = get_sensor_by_name(sensor_name)
 
-    # Logic: If DB has image_data, use it. Else, default.
+    # If DB has image_data, use it. Else, default.
     if sensor and sensor.image_data:
         image_src = sensor.image_data
     else:

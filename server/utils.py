@@ -125,7 +125,7 @@ def create_map_markers(selected_sensor_name=None):
         name = s.get('name', 'Unknown')
         lat = s.get('latitude')
         lon = s.get('longitude')
-        s_type = s.get('type') or s.get('device_type') or 'Buoy'
+        s_type = s.get('device_type')
         is_active = s.get('active', False)
 
         if lat is None or lon is None:
@@ -183,3 +183,151 @@ def create_map_markers(selected_sensor_name=None):
         )
 
     return markers, map_center, map_zoom
+
+def create_instructions_card():
+    # Fetch fresh data every time the page loads
+    from server.models import get_all_sensors
+    sensors = get_all_sensors()
+
+    # Filter sensors
+    active_sensors = [s for s in sensors if s.get('active', False)]
+    offline_sensors = [s for s in sensors if not s.get('active', False)]
+
+    # Helper function to create a clean list of links
+    def make_sensor_list(sensor_list):
+        if not sensor_list:
+            return html.Div("No sensors found.", className="text-muted small p-2")
+
+        return dbc.ListGroup(
+            [
+                dbc.ListGroupItem(
+                    html.A(
+                        [
+                            html.I(className="bi bi-circle-fill text-success me-2" if s.get(
+                                'active') else "bi bi-circle-fill text-secondary me-2", style={"fontSize": "0.7rem"}),
+                            s.get('name', 'Unknown')
+                        ],
+                        # Link to the dashboard for this specific sensor
+                        href=f"/dashboard?sensor={s.get('name')}",
+                        className="text-decoration-none text-dark d-flex align-items-center"
+                    ),
+                    className="p-1 border-0 small action-item"
+                )
+                for s in sensor_list
+            ],
+            flush=True
+        )
+
+        # Helper function to create a stylish "Title + Subtitle" list
+    def make_sensor_list(sensor_list):
+        if not sensor_list:
+            return html.Div("No sensors found.", className="text-muted small p-2")
+
+        list_items = []
+        for s in sensor_list:
+
+            s_type = s.get('device_type')
+
+            # Determine Dot Color
+            dot_class = "bi bi-circle-fill text-success" if s.get('active') else "bi bi-circle-fill text-secondary"
+
+            item = dbc.ListGroupItem(
+                html.A(
+                    [
+                        # The Status Dot
+                        html.Div(
+                            html.I(className=dot_class, style={"fontSize": "0.6rem"}),
+                            className="me-3 d-flex align-items-center"
+                        ),
+
+                        # COLUMN 2: The Text Stack (Name + Type)
+                        html.Div(
+                            [
+                                html.Span(s.get('name', 'Unknown'), className="fw-bold text-dark me-2",
+                                          style={"fontSize": "0.9rem"}),
+                                html.Span(f"({s_type})", className="text-muted small",
+                                          style={"fontSize": "0.75rem", "paddingTop": "2px"})
+                            ],
+                            # 'align-items-center' keeps them level
+                            # 'flex-wrap' allows the type to drop down if the name is too long
+                            className="d-flex align-items-center flex-wrap"
+                        )
+                    ],
+                    # Link setup
+                    href=f"/dashboard?sensor={s.get('name')}",
+                    className="text-decoration-none d-flex align-items-center w-100"
+                ),
+                className="p-2 border-0 border-bottom sensor-list-item",  # Added custom class for hover
+                action=True  # Makes the whole row clickable/hoverable
+            )
+            list_items.append(item)
+
+        return dbc.ListGroup(list_items, flush=True)
+
+    return dbc.Card(
+        [
+            dbc.CardHeader(
+                html.Div([
+                    html.Span([
+                        html.I(className="bi bi-hdd-network me-2"),
+                        "Sensor Network"
+                    ], className="fw-bold"),
+
+                    # Toggle Button
+                    dbc.Button(
+                        "▼",
+                        id="toggle-instructions",
+                        color="link",
+                        size="sm",
+                        className="p-0 text-white text-decoration-none",
+                        style={"fontSize": "1.2rem", "lineHeight": "1"}
+                    )
+                ], className="d-flex justify-content-between align-items-center"),
+                className="bg-primary text-white",
+                # Add cursor style here to hint it is draggable
+                style={"cursor": "move"}
+            ),
+
+            # Collapsible Body
+            dbc.Collapse(
+                dbc.CardBody(
+                    [
+                        # UPDATED ACCORDION WITH NEW CLASS
+                        dbc.Accordion(
+                            [
+                                dbc.AccordionItem(
+                                    make_sensor_list(active_sensors),
+                                    title=f"Active ({len(active_sensors)})",
+                                    item_id="active-item"
+                                ),
+                                dbc.AccordionItem(
+                                    make_sensor_list(offline_sensors),
+                                    title=f"Past Deployments ({len(offline_sensors)})",
+                                    item_id="offline-item"
+                                ),
+                            ],
+                            flush=True,
+                            start_collapsed=False,
+                            always_open=True,
+                            # THIS CLASS connects to the new CSS
+                            className="sensor-accordion"
+                        )
+                    ],
+                    className="p-0"  # Remove padding so the list hits the edges
+                ),
+                id="instructions-body",
+                is_open=True
+            )
+        ],
+        id="instructions-card",
+        style={
+            "position": "absolute",
+            "top": "20px",
+            "left": "20px",
+            "width": "300px",  # Slightly wider to fit names
+            "zIndex": "1000",
+            "boxShadow": "0 4px 12px rgba(0,0,0,0.15)",
+            "maxHeight": "80vh",  # Prevent it from being taller than screen
+            "overflowY": "auto"  # Scroll if too many sensors
+        },
+    )

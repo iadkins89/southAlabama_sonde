@@ -5,13 +5,11 @@ import pytz
 import dash_leaflet as dl
 from server.utils import create_map_markers
 
-
 register_page(
     __name__,
     top_nav=False,
     path='/dashboard'
 )
-
 
 def layout(sensor=None, **other_unknown_query_strings):
     cst = pytz.timezone('America/Chicago')
@@ -23,7 +21,6 @@ def layout(sensor=None, **other_unknown_query_strings):
         dcc.Store(id="sensor-name-store", data=sensor),
 
         dcc.Store(id="live-sensor-data"),
-        html.Div(id="ws-trigger", style={"display": "none"}),
 
         # First Row (Map and Info Box)
         dbc.Row([
@@ -78,7 +75,7 @@ def layout(sensor=None, **other_unknown_query_strings):
                                                 children=[
                                                     html.Img(
                                                         id="sensor-image",
-                                                        src=f"/assets/{sensor}.png",
+                                                        src="/assets/no_image_available.png",  # Default placeholder
                                                         alt="Sensor Image",
                                                         className="sensor-image"
                                                     )
@@ -182,6 +179,3 @@ def layout(sensor=None, **other_unknown_query_strings):
     ], fluid=False, className="dash-container")
 
     return layout
-
-
-
