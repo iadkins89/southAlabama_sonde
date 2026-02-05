@@ -49,3 +49,4 @@ gunicorn
 flask-socketio
 eventlet
 Pillow
+dash-leaflet==1.0.1
