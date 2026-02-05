@@ -1,10 +1,13 @@
 import os
-os.environ['EVENTLET_HUB'] = 'selects'
+import sys
+if sys.platform == 'darwin':
+    os.environ['EVENTLET_HUB'] = 'poll'
+elif os.name == 'nt':
+    os.environ['EVENTLET_HUB'] = 'selects'
 
 import eventlet
 eventlet.monkey_patch()
 
-import os
 from dash_app import create_app
 from server import create_server
 from server.socketio import socketio
