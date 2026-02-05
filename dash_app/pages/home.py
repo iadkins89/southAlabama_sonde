@@ -2,6 +2,7 @@ import dash
 from dash import html, dcc, Output, Input, State, callback
 import dash_bootstrap_components as dbc
 import dash_leaflet as dl
+from server.utils import create_map_markers
 from server.models import get_all_sensors
 
 dash.register_page(__name__, path='/')
@@ -156,73 +157,20 @@ def create_instructions_card():
         },
     )
 
-
-# --- 2. Helper to Create Markers (Unchanged) ---
-def create_map_markers():
-    sensors = get_all_sensors()
-    markers = []
-
-    for s in sensors:
-        s_type = s.get('type') or s.get('device_type') or 'Buoy'
-        lat = s.get('latitude')
-        lon = s.get('longitude')
-
-        if lat is None or lon is None:
-            continue
-
-        name = s.get('name', 'Unknown')
-        is_active = s.get('active', False)
-
-        status_color = "success" if is_active else "secondary"
-        status_text = "Online" if is_active else "Offline"
-
-        popup_content = dbc.Card([
-            dbc.CardHeader(name, className=f"text-white bg-{status_color} p-2"),
-            dbc.CardBody([
-                html.P(f"Type: {s_type}", className="small mb-1"),
-                html.P(f"Status: {status_text}", className="small mb-2 fw-bold"),
-                dbc.Button(
-                    "View Dashboard",
-                    href=f"/dashboard?sensor={name}",
-                    size="sm",
-                    color="primary",
-                    className="w-100"
-                )
-            ], className="p-2")
-        ], className="border-0", style={"minWidth": "200px"})
-
-        markers.append(
-            dl.Marker(
-                position=[lat, lon],
-                children=[
-                    dl.Tooltip(name),
-                    dl.Popup(popup_content, closeButton=False)
-                ],
-                icon={
-                    "iconUrl": "/assets/buoy.svg",
-                    "iconSize": [25, 25],
-                    "iconAnchor": [20, 20],
-                    "popupAnchor": [0, -20]
-                }
-            )
-        )
-    return markers
-
-
-# --- 3. The Layout Function ---
 def layout():
-    # We call the function here so the list is fresh every time the page loads
+
     card_content = create_instructions_card()
+    markers, map_center, map_zoom = create_map_markers(selected_sensor_name=None)
 
     return html.Div(
         [
             dl.Map(
                 [
                     dl.TileLayer(url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"),
-                    dl.LayerGroup(children=create_map_markers())
+                    dl.LayerGroup(children=markers)
                 ],
-                center=[30.4, -87.8],
-                zoom=9,
+                center=map_center,
+                zoom=map_zoom,
                 style={"width": "100%", "height": "100vh"},
                 zoomControl=False
             ),
@@ -230,17 +178,3 @@ def layout():
         ],
         style={"position": "relative", "height": "100vh", "overflow": "hidden"}
     )
-
-
-# --- 4. Callbacks ---
-@callback(
-    [Output("instructions-body", "is_open"), Output("toggle-instructions", "children")],
-    Input("toggle-instructions", "n_clicks"),
-    State("instructions-body", "is_open"),
-    prevent_initial_call=True
-)
-def toggle_card(n, is_open):
-    if is_open:
-        return False, "▲"
-    else:
-        return True, "▼"

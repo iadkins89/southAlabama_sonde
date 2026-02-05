@@ -4,6 +4,9 @@ import io
 import base64
 from PIL import Image, ImageOps
 from collections import defaultdict
+import dash_bootstrap_components as dbc
+from dash import html
+import dash_leaflet as dl
 import plotly.graph_objs as go
 from dash import dcc
 # from server.models import get_sensor_timezone, get_sensor_by_name, get_most_recent, get_all_sensors
@@ -104,97 +107,79 @@ def get_measurement_summary(sensor_name, include_health=False):
         "most_recent_measurements": summary_list
     }
 
-def get_map_graph(height, l=10, r=10, t=0, b=0):
-    """
-    Generates a Scattermapbox graph with markers based on sensors' data, including a legend for device types.
 
-    Returns:
-        dcc.Graph: A Dash graph component.
+def create_map_markers(selected_sensor_name=None):
+    """
+    Generates map markers.
+    If selected_sensor_name is provided, it zooms in on that sensor and makes it bigger.
     """
     from server.models import get_all_sensors
-    # Retrieve sensor data
     sensors = get_all_sensors()
+    markers = []
 
-    # Define color mapping for device types
-    device_type_colors = {
-        "sonde": "#D95D39",  # Mint Green
-        "tide_gauge": "#F18805",  # Aqua Blue
-        "wave_gauge": "#F0A202",  # Coral Orange
-        "other": "#0E1428"  # Lemon Yellow
-    }
+    # Default View (Whole Bay)
+    map_center = [30.4, -87.8]
+    map_zoom = 9
 
-    # Create Scattermapbox traces grouped by device type
-    traces = []
-    if sensors:
-        for device_type, color in device_type_colors.items():
-            # Filter sensors for this device type
-            filtered_sensors = [sensor for sensor in sensors if sensor["device_type"] == device_type]
+    for s in sensors:
+        name = s.get('name', 'Unknown')
+        lat = s.get('latitude')
+        lon = s.get('longitude')
+        s_type = s.get('type') or s.get('device_type') or 'Buoy'
+        is_active = s.get('active', False)
 
-            # Add a trace if there are sensors of this type
-            if filtered_sensors:
-                traces.append(
-                    go.Scattermapbox(
-                        lat=[sensor["latitude"] for sensor in filtered_sensors],
-                        lon=[sensor["longitude"] for sensor in filtered_sensors],
-                        mode="markers",
-                        marker=dict(
-                            size=16,
-                            color=color,
-                            opacity=0.8
+        if lat is None or lon is None:
+            continue
 
-                        ),
-                        text=[sensor["name"] for sensor in filtered_sensors],
-                        hoverinfo="text",
-                        name=device_type.replace("_", " ").capitalize(),  # Legend label
-                        legendgroup=device_type  # Grouping for consistent coloring
-                    )
+        # Highlight Logic
+        is_selected = (name == selected_sensor_name)
+
+        if is_selected:
+            map_center = [lat, lon]
+            map_zoom = 12
+            icon_opts = {
+                "iconUrl": "/assets/buoy.svg",
+                "iconSize": [60, 60],  # Highlighted = Big
+                "iconAnchor": [30, 30],
+                "popupAnchor": [0, -30]
+            }
+        else:
+            icon_opts = {
+                "iconUrl": "/assets/buoy.svg",
+                "iconSize": [30, 30],  # Standard = Normal
+                "iconAnchor": [15, 15],
+                "popupAnchor": [0, -20]
+            }
+
+        # Popup Content
+        status_color = "success" if is_active else "secondary"
+        status_text = "Online" if is_active else "Offline"
+
+        popup_content = dbc.Card([
+            dbc.CardHeader(name, className=f"text-white bg-{status_color} p-2"),
+            dbc.CardBody([
+                html.P(f"Type: {s_type}", className="small mb-1"),
+                html.P(f"Status: {status_text}", className="small mb-2 fw-bold"),
+
+                dbc.Button(
+                    "View Dashboard",
+                    href=f"/dashboard?sensor={name}",  # Standardized Query String
+                    size="sm",
+                    color="primary",
+                    className="w-100"
                 )
+            ], className="p-2")
+        ], className="border-0", style={"minWidth": "200px"})
 
-    # If no traces, add an empty trace for consistency
-    if not traces:
-        traces.append(
-            go.Scattermapbox(
-                lat=[],
-                lon=[],
-                mode="markers",
-                marker=dict(size=1, opacity=0),  # Invisible marker
-                name="No sensors available",
+        markers.append(
+            dl.Marker(
+                position=[lat, lon],
+                children=[
+                    dl.Tooltip(name),
+                    dl.Popup(popup_content, closeButton=False)
+                ],
+                icon=icon_opts
             )
         )
 
-    # Create the map graph
-    map_graph = dcc.Graph(
-        id="map-graph",
-        figure={
-            "data": traces,
-            "layout": go.Layout(
-                autosize=True,
-                hovermode="closest",
-                mapbox=dict(
-                    accesstoken=os.environ.get("MAP_ACCESS_TOKEN"),
-                    bearing=0,
-                    center=dict(lat=30.5, lon=-88.0),  # Default center
-                    pitch=0,
-                    zoom=8,
-                    style="outdoors"
-                ),
-                margin=dict(l=l, r=r, t=t, b=b),
-                showlegend=True,
-                legend=dict(
-                    title="Device Types",
-                    font=dict(size=12),
-                    bgcolor="rgba(255, 255, 255, 0.7)",  # Semi-transparent background
-                    bordercolor="lightgray",
-                    borderwidth=1,
-                    x=0.02,  # Horizontal position within the map
-                    y=0.98,  # Vertical position within the map
-                ),
-            )
-        },
-        style={"height": height},
-        config={
-            "displayModeBar": False
-        }
-    )
-
-    return map_graph
+    return markers, map_center, map_zoom

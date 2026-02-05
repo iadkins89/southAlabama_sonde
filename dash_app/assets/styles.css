@@ -1,4 +1,43 @@
 /* =========================================
+   8. DESKTOP MENU "POPUP" STYLE
+   ========================================= */
+@media (min-width: 769px) {
+    /* This targets the collapsible area only on larger screens.
+       It forces it to act like a dropdown card instead of a full-width bar.
+    */
+    .navbar-collapse {
+        position: absolute;
+        top: 90px;       /* Just below the 100px navbar (allows small overlap or gap) */
+        right: 20px;     /* Aligned with the right edge padding */
+        width: 300px;    /* Fixed width so it looks like a menu, not a banner */
+
+        background-color: #ffffff !important;
+        padding: 15px;
+
+        /* Make it look like a floating card */
+        border-radius: 8px;
+        border: 1px solid rgba(0,0,0,0.1);
+        box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+
+        /* Ensure it sits on top of the map */
+        z-index: 10000;
+    }
+
+    /* Adds a tiny arrow pointing up to the hamburger button */
+    .navbar-collapse::before {
+        content: "";
+        position: absolute;
+        top: -8px;
+        right: 20px;
+        width: 0;
+        height: 0;
+        border-left: 8px solid transparent;
+        border-right: 8px solid transparent;
+        border-bottom: 8px solid #ffffff;
+    }
+}
+
+/* =========================================
    7. SENSOR CARD ACCORDION STYLES
    ========================================= */
 

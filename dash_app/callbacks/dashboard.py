@@ -11,23 +11,6 @@ from server.models import (get_data,
 import pytz
 from dateutil.parser import parse as parse_date
 
-
-# ----------------------------
-# Map navigation
-# ----------------------------
-@callback(
-    [Output('url', 'href'), Output('sensor-name-store', 'data')],
-    Input('map-graph', 'clickData'),
-    prevent_initial_call=True
-)
-def redirect_on_click(clickData):
-    if clickData:
-        sensor_name = clickData['points'][0]['text']
-
-        # Generate the URL with query string
-        return f"/dashboard?name={sensor_name}", sensor_name
-    return no_update, no_update
-
 # ----------------------------
 # Time series graphs
 # ----------------------------
