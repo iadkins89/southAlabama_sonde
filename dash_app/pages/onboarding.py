@@ -10,7 +10,6 @@ register_page(
 def layout():
     layout = dbc.Container([
         html.Div(id="onboarding-page", children=[
-            dcc.Location(id="url", refresh=True),
             html.Div(id="login-form", children=[
                 html.H2("Login to Access Onboarding", className="text-center mt-4 fs-5"),
                 dbc.Form([

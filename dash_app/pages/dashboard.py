@@ -2,7 +2,8 @@ from dash import dcc, html, register_page
 import dash_bootstrap_components as dbc
 from datetime import datetime
 import pytz
-from server.utils import get_map_graph
+import dash_leaflet as dl
+from server.utils import create_map_markers
 
 register_page(
     __name__,
@@ -10,22 +11,35 @@ register_page(
     path='/dashboard'
 )
 
-def layout(name=None, **other_unknown_query_strings):
+def layout(sensor=None, **other_unknown_query_strings):
     cst = pytz.timezone('America/Chicago')
     cst_today = datetime.now(cst).replace(hour=0, minute=0, second=0, microsecond=0)
 
+    markers, map_center, map_zoom = create_map_markers(sensor)
+
     layout = dbc.Container([
-        dcc.Location(id='url', refresh=False),
-        dcc.Store(id="sensor-name-store", data=name),
+        dcc.Store(id="sensor-name-store", data=sensor),
 
         dcc.Store(id="live-sensor-data"),
-        html.Div(id="ws-trigger", style={"display": "none"}),
 
         # First Row (Map and Info Box)
         dbc.Row([
-            # Column for the map (unchanged)
+            # Map
             dbc.Col(
-                dbc.Card(get_map_graph("50vh", 0, 0, 0, 0)),
+                dbc.Card(
+                    dl.Map(
+                        [
+                            dl.TileLayer(
+                                url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"),
+                            dl.LayerGroup(children=markers)
+                        ],
+                        center=map_center,
+                        zoom=map_zoom,
+                        style={"width": "100%", "height": "50vh"},
+                        zoomControl=True
+                    ),
+                    className="shadow-sm border-0"
+                ),
                 xs=12, sm=12, md=12, lg=6,
             ),
 
@@ -61,7 +75,7 @@ def layout(name=None, **other_unknown_query_strings):
                                                 children=[
                                                     html.Img(
                                                         id="sensor-image",
-                                                        src=f"/assets/{name}.png",
+                                                        src="/assets/no_image_available.png",  # Default placeholder
                                                         alt="Sensor Image",
                                                         className="sensor-image"
                                                     )
@@ -165,6 +179,3 @@ def layout(name=None, **other_unknown_query_strings):
     ], fluid=False, className="dash-container")
 
     return layout
-
-
-

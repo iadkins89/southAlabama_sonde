@@ -4,6 +4,9 @@ import io
 import base64
 from PIL import Image, ImageOps
 from collections import defaultdict
+import dash_bootstrap_components as dbc
+from dash import html
+import dash_leaflet as dl
 import plotly.graph_objs as go
 from dash import dcc
 # from server.models import get_sensor_timezone, get_sensor_by_name, get_most_recent, get_all_sensors
@@ -104,97 +107,227 @@ def get_measurement_summary(sensor_name, include_health=False):
         "most_recent_measurements": summary_list
     }
 
-def get_map_graph(height, l=10, r=10, t=0, b=0):
-    """
-    Generates a Scattermapbox graph with markers based on sensors' data, including a legend for device types.
 
-    Returns:
-        dcc.Graph: A Dash graph component.
+def create_map_markers(selected_sensor_name=None):
+    """
+    Generates map markers.
+    If selected_sensor_name is provided, it zooms in on that sensor and makes it bigger.
     """
     from server.models import get_all_sensors
-    # Retrieve sensor data
     sensors = get_all_sensors()
+    markers = []
 
-    # Define color mapping for device types
-    device_type_colors = {
-        "sonde": "#D95D39",  # Mint Green
-        "tide_gauge": "#F18805",  # Aqua Blue
-        "wave_gauge": "#F0A202",  # Coral Orange
-        "other": "#0E1428"  # Lemon Yellow
-    }
+    # Default View (Whole Bay)
+    map_center = [30.4, -87.8]
+    map_zoom = 9
 
-    # Create Scattermapbox traces grouped by device type
-    traces = []
-    if sensors:
-        for device_type, color in device_type_colors.items():
-            # Filter sensors for this device type
-            filtered_sensors = [sensor for sensor in sensors if sensor["device_type"] == device_type]
+    for s in sensors:
+        name = s.get('name', 'Unknown')
+        lat = s.get('latitude')
+        lon = s.get('longitude')
+        s_type = s.get('device_type')
+        is_active = s.get('active', False)
 
-            # Add a trace if there are sensors of this type
-            if filtered_sensors:
-                traces.append(
-                    go.Scattermapbox(
-                        lat=[sensor["latitude"] for sensor in filtered_sensors],
-                        lon=[sensor["longitude"] for sensor in filtered_sensors],
-                        mode="markers",
-                        marker=dict(
-                            size=16,
-                            color=color,
-                            opacity=0.8
+        if lat is None or lon is None:
+            continue
 
-                        ),
-                        text=[sensor["name"] for sensor in filtered_sensors],
-                        hoverinfo="text",
-                        name=device_type.replace("_", " ").capitalize(),  # Legend label
-                        legendgroup=device_type  # Grouping for consistent coloring
-                    )
+        # Highlight Logic
+        is_selected = (name == selected_sensor_name)
+
+        if is_selected:
+            map_center = [lat, lon]
+            map_zoom = 12
+            icon_opts = {
+                "iconUrl": "/assets/buoy.svg",
+                "iconSize": [60, 60],  # Highlighted = Big
+                "iconAnchor": [30, 30],
+                "popupAnchor": [0, -30]
+            }
+        else:
+            icon_opts = {
+                "iconUrl": "/assets/buoy.svg",
+                "iconSize": [30, 30],  # Standard = Normal
+                "iconAnchor": [15, 15],
+                "popupAnchor": [0, -20]
+            }
+
+        # Popup Content
+        status_color = "success" if is_active else "secondary"
+        status_text = "Online" if is_active else "Offline"
+
+        popup_content = dbc.Card([
+            dbc.CardHeader(name, className=f"text-white bg-{status_color} p-2"),
+            dbc.CardBody([
+                html.P(f"Type: {s_type}", className="small mb-1"),
+                html.P(f"Status: {status_text}", className="small mb-2 fw-bold"),
+
+                dbc.Button(
+                    "View Dashboard",
+                    href=f"/dashboard?sensor={name}",  # Standardized Query String
+                    size="sm",
+                    color="primary",
+                    className="w-100"
                 )
+            ], className="p-2")
+        ], className="border-0", style={"minWidth": "200px"})
 
-    # If no traces, add an empty trace for consistency
-    if not traces:
-        traces.append(
-            go.Scattermapbox(
-                lat=[],
-                lon=[],
-                mode="markers",
-                marker=dict(size=1, opacity=0),  # Invisible marker
-                name="No sensors available",
+        markers.append(
+            dl.Marker(
+                position=[lat, lon],
+                children=[
+                    dl.Tooltip(name),
+                    dl.Popup(popup_content, closeButton=False)
+                ],
+                icon=icon_opts
             )
         )
 
-    # Create the map graph
-    map_graph = dcc.Graph(
-        id="map-graph",
-        figure={
-            "data": traces,
-            "layout": go.Layout(
-                autosize=True,
-                hovermode="closest",
-                mapbox=dict(
-                    accesstoken=os.environ.get("MAP_ACCESS_TOKEN"),
-                    bearing=0,
-                    center=dict(lat=30.5, lon=-88.0),  # Default center
-                    pitch=0,
-                    zoom=8,
-                    style="outdoors"
-                ),
-                margin=dict(l=l, r=r, t=t, b=b),
-                showlegend=True,
-                legend=dict(
-                    title="Device Types",
-                    font=dict(size=12),
-                    bgcolor="rgba(255, 255, 255, 0.7)",  # Semi-transparent background
-                    bordercolor="lightgray",
-                    borderwidth=1,
-                    x=0.02,  # Horizontal position within the map
-                    y=0.98,  # Vertical position within the map
-                ),
-            )
-        },
-        style={"height": height},
-        config={
-            "displayModeBar": False
-        }
-    )
+    return markers, map_center, map_zoom
 
-    return map_graph
+def create_instructions_card():
+    # Fetch fresh data every time the page loads
+    from server.models import get_all_sensors
+    sensors = get_all_sensors()
+
+    # Filter sensors
+    active_sensors = [s for s in sensors if s.get('active', False)]
+    offline_sensors = [s for s in sensors if not s.get('active', False)]
+
+    # Helper function to create a clean list of links
+    def make_sensor_list(sensor_list):
+        if not sensor_list:
+            return html.Div("No sensors found.", className="text-muted small p-2")
+
+        return dbc.ListGroup(
+            [
+                dbc.ListGroupItem(
+                    html.A(
+                        [
+                            html.I(className="bi bi-circle-fill text-success me-2" if s.get(
+                                'active') else "bi bi-circle-fill text-secondary me-2", style={"fontSize": "0.7rem"}),
+                            s.get('name', 'Unknown')
+                        ],
+                        # Link to the dashboard for this specific sensor
+                        href=f"/dashboard?sensor={s.get('name')}",
+                        className="text-decoration-none text-dark d-flex align-items-center"
+                    ),
+                    className="p-1 border-0 small action-item"
+                )
+                for s in sensor_list
+            ],
+            flush=True
+        )
+
+        # Helper function to create a stylish "Title + Subtitle" list
+    def make_sensor_list(sensor_list):
+        if not sensor_list:
+            return html.Div("No sensors found.", className="text-muted small p-2")
+
+        list_items = []
+        for s in sensor_list:
+
+            s_type = s.get('device_type')
+
+            # Determine Dot Color
+            dot_class = "bi bi-circle-fill text-success" if s.get('active') else "bi bi-circle-fill text-secondary"
+
+            item = dbc.ListGroupItem(
+                html.A(
+                    [
+                        # The Status Dot
+                        html.Div(
+                            html.I(className=dot_class, style={"fontSize": "0.6rem"}),
+                            className="me-3 d-flex align-items-center"
+                        ),
+
+                        # COLUMN 2: The Text Stack (Name + Type)
+                        html.Div(
+                            [
+                                html.Span(s.get('name', 'Unknown'), className="fw-bold text-dark me-2",
+                                          style={"fontSize": "0.9rem"}),
+                                html.Span(f"({s_type})", className="text-muted small",
+                                          style={"fontSize": "0.75rem", "paddingTop": "2px"})
+                            ],
+                            # 'align-items-center' keeps them level
+                            # 'flex-wrap' allows the type to drop down if the name is too long
+                            className="d-flex align-items-center flex-wrap"
+                        )
+                    ],
+                    # Link setup
+                    href=f"/dashboard?sensor={s.get('name')}",
+                    className="text-decoration-none d-flex align-items-center w-100"
+                ),
+                className="p-2 border-0 border-bottom sensor-list-item",  # Added custom class for hover
+                action=True  # Makes the whole row clickable/hoverable
+            )
+            list_items.append(item)
+
+        return dbc.ListGroup(list_items, flush=True)
+
+    return dbc.Card(
+        [
+            dbc.CardHeader(
+                html.Div([
+                    html.Span([
+                        html.I(className="bi bi-hdd-network me-2"),
+                        "Sensor Network"
+                    ], className="fw-bold"),
+
+                    # Toggle Button
+                    dbc.Button(
+                        "▼",
+                        id="toggle-instructions",
+                        color="link",
+                        size="sm",
+                        className="p-0 text-white text-decoration-none",
+                        style={"fontSize": "1.2rem", "lineHeight": "1"}
+                    )
+                ], className="d-flex justify-content-between align-items-center"),
+                className="bg-primary text-white",
+                # Add cursor style here to hint it is draggable
+                style={"cursor": "move"}
+            ),
+
+            # Collapsible Body
+            dbc.Collapse(
+                dbc.CardBody(
+                    [
+                        # UPDATED ACCORDION WITH NEW CLASS
+                        dbc.Accordion(
+                            [
+                                dbc.AccordionItem(
+                                    make_sensor_list(active_sensors),
+                                    title=f"Active ({len(active_sensors)})",
+                                    item_id="active-item"
+                                ),
+                                dbc.AccordionItem(
+                                    make_sensor_list(offline_sensors),
+                                    title=f"Past Deployments ({len(offline_sensors)})",
+                                    item_id="offline-item"
+                                ),
+                            ],
+                            flush=True,
+                            start_collapsed=False,
+                            always_open=True,
+                            # THIS CLASS connects to the new CSS
+                            className="sensor-accordion"
+                        )
+                    ],
+                    className="p-0"  # Remove padding so the list hits the edges
+                ),
+                id="instructions-body",
+                is_open=True
+            )
+        ],
+        id="instructions-card",
+        style={
+            "position": "absolute",
+            "top": "20px",
+            "left": "20px",
+            "width": "300px",  # Slightly wider to fit names
+            "zIndex": "1000",
+            "boxShadow": "0 4px 12px rgba(0,0,0,0.15)",
+            "maxHeight": "80vh",  # Prevent it from being taller than screen
+            "overflowY": "auto"  # Scroll if too many sensors
+        },
+    )

@@ -1,49 +1,28 @@
-from dash import dcc, html, register_page
-from server.utils import get_map_graph
-import dash_bootstrap_components as dbc
+import dash
+from dash import html
+import dash_leaflet as dl
+from server.utils import create_instructions_card,create_map_markers
 
-register_page(
-    __name__,
-    top_nav=True,
-    path='/'
-)
+dash.register_page(__name__, path='/')
 
 def layout():
-    layout = dbc.Container(
+
+    card_content = create_instructions_card()
+    markers, map_center, map_zoom = create_map_markers(selected_sensor_name=None)
+
+    return html.Div(
         [
-            dcc.Location(id='home-url', refresh=True),
-            dcc.Store(id='click-store'),  # Store to reset clickData
-            dbc.Row(
+            dl.Map(
                 [
-                    dbc.Col(
-                        dbc.Card(get_map_graph("75vh",0,0,0,0)),
-                        xs=12, sm=12, md=12, lg=9
-                    ),
-                    dbc.Col(
-                        dbc.Card([
-                            html.H5("Exploring Our Network ",
-                                    style={
-                                        "text-align": "center",
-                                        "margin-top": "20px"
-                                    }
-                                ),
-                            html.P(
-                                "This map shows the location of actively deployed sensors in our network. "
-                                "Real-time sensor measurements can be viewed by selecting a sensor on the map "
-                                "or by selecting a sensor in the Sensors tab.",
-                                className="lead",
-                                style={"margin-left": "5%"}
-                            ),
-                        ]),
-                    xs=12, sm=12, md=12, lg=3),
-                ], className="g-3", justify="center"
+                    dl.TileLayer(url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"),
+                    dl.LayerGroup(children=markers)
+                ],
+                center=map_center,
+                zoom=map_zoom,
+                style={"width": "100%", "height": "100vh"},
+                zoomControl=False
             ),
+            card_content
         ],
-        fluid=False,
-        className="dash-container"
+        style={"position": "relative", "height": "100vh", "overflow": "hidden"}
     )
-
-    return layout
-
-
-

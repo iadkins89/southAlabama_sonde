@@ -1,6 +1,7 @@
-from dash import callback, Input, Output, State, ALL, html
+from dash import callback, Input, Output, State, ALL, html, ctx
 import dash_bootstrap_components as dbc
 from server.models import get_sensors_grouped_by_type
+
 
 @callback(
     Output("navbar-collapse", "is_open"),
@@ -14,10 +15,18 @@ from server.models import get_sensors_grouped_by_type
     State("navbar-collapse", "is_open"),
 )
 def toggle_navbar(n_clicks, home_click, onboard_click, about_click, sensor_clicks, is_open):
-    if any([n_clicks, home_click, onboard_click, about_click]) or any(sensor_clicks):
-        return not is_open
-    return is_open
+    trigger = ctx.triggered_id
 
+    # If nothing triggered (initial load), stay closed
+    if not trigger:
+        return False
+
+    # If the User clicked the Hamburger Button -> TOGGLE IT
+    if trigger == "navbar-toggler":
+        return not is_open
+
+    # Force close
+    return False
 
 @callback(
     Output("sensors-dropdown", "children"),
@@ -48,7 +57,7 @@ def populate_sensors_dropdown(pathname, update_signal):
             dropdown_items.append(
                 dbc.DropdownMenuItem(
                     sensor_name,
-                    href=f"/dashboard?name={sensor_name}",
+                    href=f"/dashboard?sensor={sensor_name}",
                     id={"type": "sensor-item", "index": sensor_name}
                 )
             )

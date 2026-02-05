@@ -1,12 +1,12 @@
-from dash import callback, Input, Output, no_update
+from dash import callback, Input, Output, State
 @callback(
-    Output('home-url', 'href'),
-    Input('map-graph', 'clickData')
+    [Output("instructions-body", "is_open"), Output("toggle-instructions", "children")],
+    Input("toggle-instructions", "n_clicks"),
+    State("instructions-body", "is_open"),
+    prevent_initial_call=True
 )
-def home_redirect_on_click(clickData):
-    if clickData:
-        sensor_name = clickData['points'][0]['text']
-
-        # Generate the URL with query string
-        return f"/dashboard?name={sensor_name}"
-    return no_update
+def toggle_card(n, is_open):
+    if is_open:
+        return False, "▲"
+    else:
+        return True, "▼"
