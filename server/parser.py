@@ -62,6 +62,7 @@ def parse_iridium_message(sensor_data):
 
         #Decode payload
         b64_string = sensor_data.get('data') or sensor_data.get('message')
+        print(f"Raw Payload: {b64_string}")
 
         payload = {}
         payload['timestamp'] = timestamp
