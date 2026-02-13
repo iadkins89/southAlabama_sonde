@@ -57,8 +57,8 @@ def parse_iridium_message(sensor_data):
 
         # Grab lat/long
         location = sensor_data.get('imt', {})
-        lat = location.get('lat')
-        lon = location.get('lon')
+        lat = location.get('latitude')
+        lon = location.get('longitude')
 
         #Decode payload
         b64_string = sensor_data.get('data') or sensor_data.get('message')
@@ -68,10 +68,9 @@ def parse_iridium_message(sensor_data):
         payload['timestamp'] = timestamp
         if b64_string:
             try:
-                # 1. Decode Base64 to raw bytes
                 raw = base64.b64decode(b64_string)
 
-                # 2. Check for Header (01 04)
+                # Check if there is more than a header
                 if len(raw) >= 2:
 
                     # Start at index 2 to skip the header bytes
@@ -81,12 +80,9 @@ def parse_iridium_message(sensor_data):
                     while i <= len(raw) - 5:
                         tag = raw[i]
 
-                        # Unpack 4 bytes as Little Endian Float
-                        # raw[i+1 : i+5] slices bytes from i+1 up to (but not including) i+5
-                        # [0] grabs the float from the tuple
                         value = struct.unpack('<f', raw[i + 1: i + 5])[0]
 
-                        # Map Tags
+                        # Tags
                         if tag == 1:
                             payload['dissolved_oxygen'] = value
                         elif tag == 2:
@@ -95,6 +91,8 @@ def parse_iridium_message(sensor_data):
                             payload['pH'] = value
                         elif tag == 4:
                             payload['temperature'] = value
+                        elif tag == 5:
+                            payload['humidity'] = value
 
                         # Move to next block (1 byte tag + 4 bytes float = 5 bytes)
                         i += 5
