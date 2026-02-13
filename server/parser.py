@@ -68,14 +68,38 @@ def parse_iridium_message(sensor_data):
         payload['timestamp'] = timestamp
         if b64_string:
             try:
+                # 1. Decode Base64 to raw bytes
                 raw = base64.b64decode(b64_string)
 
-                do, ec, ph, temp = struct.unpack('<4f', raw)
+                # 2. Check for Header (01 04)
+                if len(raw) >= 2:
 
-                payload['dissolved_oxygen'] = do
-                payload['conductivity'] = ec
-                payload['pH'] = ph
-                payload['temperature'] = temp
+                    # Start at index 2 to skip the header bytes
+                    i = 2
+
+                    # Loop while we have at least 5 bytes remaining (1 tag + 4 float)
+                    while i <= len(raw) - 5:
+                        tag = raw[i]
+
+                        # Unpack 4 bytes as Little Endian Float
+                        # raw[i+1 : i+5] slices bytes from i+1 up to (but not including) i+5
+                        # [0] grabs the float from the tuple
+                        value = struct.unpack('<f', raw[i + 1: i + 5])[0]
+
+                        # Map Tags
+                        if tag == 1:
+                            payload['dissolved_oxygen'] = value
+                        elif tag == 2:
+                            payload['conductivity'] = value
+                        elif tag == 3:
+                            payload['pH'] = value
+                        elif tag == 4:
+                            payload['temperature'] = value
+
+                        # Move to next block (1 byte tag + 4 bytes float = 5 bytes)
+                        i += 5
+                else:
+                    print("Payload too short for header")
 
             except Exception as e:
                 print(f"Binary Decoding Failed: {e}")
