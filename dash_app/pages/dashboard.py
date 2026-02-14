@@ -19,8 +19,8 @@ def layout(sensor=None, **other_unknown_query_strings):
 
     layout = dbc.Container([
         dcc.Store(id="sensor-name-store", data=sensor),
-
         dcc.Store(id="live-sensor-data"),
+        dcc.Store(id="selected-deployment-store", data=None),
 
         # First Row (Map and Info Box)
         dbc.Row([
@@ -92,7 +92,8 @@ def layout(sensor=None, **other_unknown_query_strings):
                         dbc.CardFooter([
                             dbc.Button("Download Data", id="download-button", size="sm", color="light"),
                             dbc.Button("Sensor Health", id="sensor-health-button", size="sm", color="light",
-                                       className="ms-2")
+                                       className="ms-2"),
+                            dbc.Button("Deployment History", id="history-button", size="sm", color="light", className="border"),
                         ]),
 
                         dbc.Offcanvas(
@@ -147,6 +148,16 @@ def layout(sensor=None, **other_unknown_query_strings):
                             title="Sensor Health",
                             is_open=False,
                         ),
+
+                        dbc.Offcanvas(
+                            html.Div(
+                                dbc.ListGroup(id="history-list-content", flush=True)
+                            ),
+                            id="history-offcanvas",
+                            title="Deployment History",
+                            placement="end",
+                            is_open=False,
+                        ),
                     ],
                     className="sensor-card"
                 ),
@@ -156,22 +167,44 @@ def layout(sensor=None, **other_unknown_query_strings):
 
         dbc.Row(
             dbc.Col(
-                dbc.RadioItems(
-                    id="date-range-radio",
-                    className="btn-group",  # Group styling
-                    inputClassName="btn-check",  # Hidden input style
-                    labelClassName="btn btn-outline-primary",  # Button styling
-                    labelCheckedClassName="active",  # Active button styling
-                    options=[
-                        {"label": "2 Days", "value": "2-days"},
-                        {"label": "1 Week", "value": "1-week"},
-                        {"label": "1 Month", "value": "1-month"},
-                        {"label": "1 Year", "value": "1-year"},
-                    ],
-                    value="2-days",  # Default value
-                ),
-                className="radio-group mt-3",  # Add margin-top for spacing
-            ),
+                [
+                    # --- LIVE CONTROLS (Radio Buttons) ---
+                    dbc.RadioItems(
+                        id="date-range-radio",
+                        className="btn-group",
+                        inputClassName="btn-check",
+                        labelClassName="btn btn-outline-primary",
+                        labelCheckedClassName="active",
+                        options=[
+                            {"label": "2 Days", "value": "2-days"},
+                            {"label": "1 Week", "value": "1-week"},
+                            {"label": "1 Month", "value": "1-month"},
+                            {"label": "1 Year", "value": "1-year"},
+                        ],
+                        value="2-days",
+                        style={"display": "inline-flex"}
+                    ),
+
+                    # --- HISTORY CONTROLS (Slider) ---
+                    html.Div([
+                        html.Div([
+                            html.Span("Playback History", className="fw-bold small me-2"),
+                            html.Span(id="slider-date-label", className="badge bg-secondary")
+                        ], className="d-flex justify-content-between align-items-center mb-3"),
+
+                        html.Div(
+                            dcc.RangeSlider(
+                                id="historic-date-slider",
+                                min=0, max=100, value=[0, 100],
+                                # Disable built-in tooltip (it shows raw numbers)
+                                tooltip={"always_visible": False}
+                            ),
+                            style={"padding": "0 10px"}
+                        )
+                    ], id="historic-controls-container", style={"display": "none"})
+                ],
+                className="radio-group mt-3"  # Keep your original class
+            )
         ),
         dbc.Row(
             id="multi-sensor-graph",

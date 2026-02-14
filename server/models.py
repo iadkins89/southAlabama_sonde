@@ -336,3 +336,54 @@ def create_or_update_sensor(name, latitude,
     except Exception as e:
         db.session.rollback()
         return f"Database Error: {str(e)}"
+
+
+# In server/utils.py
+
+def get_past_deployments(sensor_name):
+    """
+    Fetches location history for a specific sensor.
+    Returns a list of dicts with formatted dates and coordinates.
+    """
+
+    sensor = get_sensor_by_name(sensor_name)
+    if not sensor:
+        return []
+
+    # Query the LocationHistory table
+    try:
+        history_records = LocationHistory.query.filter_by(sensor_id=sensor.id)\
+            .order_by(LocationHistory.deployed_at.desc()).all()
+    except Exception as e:
+        print(f"Error fetching history: {e}")
+        return []
+
+    deployments = []
+    for record in history_records:
+        # Format the dates nicely
+        start_fmt = record.deployed_at.strftime("%b %d, %Y")
+        if record.removed_at:
+            end_fmt = record.removed_at.strftime("%b %d, %Y")
+            # Calculate duration roughly
+            days = (record.removed_at - record.deployed_at).days
+            duration = f"{days} days"
+            is_current = False
+            end_iso = record.removed_at.isoformat()
+        else:
+            end_fmt = "Active"
+            duration = "Current"
+            is_current = True
+            end_iso = None
+
+        deployments.append({
+            "site_name": f"Deployment: {start_fmt}", # You can customize this if you have site names
+            "range": f"{start_fmt} - {end_fmt}",
+            "duration": duration,
+            "latitude": record.latitude,
+            "longitude": record.longitude,
+            "is_current": is_current,
+            "start_iso": record.deployed_at.isoformat(),
+            "end_iso": end_iso
+        })
+
+    return deployments

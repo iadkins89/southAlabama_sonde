@@ -1,5 +1,55 @@
 /* =========================================
-   9. OFFCANVAS FIXES
+   COMPACT FOOTER ACCORDION
+   ========================================= */
+
+/* 1. Shrink the main "Past Deployments" button */
+.compact-accordion .accordion-button {
+    padding: 4px 10px !important;    /* Very thin top/bottom */
+    font-size: 0.75rem !important;   /* Small text */
+    min-height: 0 !important;        /* Allow it to shrink */
+    background-color: transparent !important;
+    box-shadow: none !important;     /* Remove blue glow */
+    color: #555;
+}
+
+/* 2. Remove padding from the container holding the list */
+.compact-accordion .accordion-body {
+    padding: 0 !important;
+}
+
+/* 3. Shrink the actual list items (the deployment rows) */
+#history-list-content .list-group-item {
+    padding: 4px 10px !important;    /* Tighten the rows */
+    font-size: 0.75rem !important;   /* Small text */
+    border-left: none;
+    border-right: none;
+}
+
+/* Optional: Make the list items hover nicely */
+#history-list-content .list-group-item:hover {
+    background-color: #f8f9fa;
+    cursor: pointer;
+}
+
+/* =========================================
+   HIDE SLIDER TOOLTIP
+   ========================================= */
+.rc-slider-tooltip {
+    visibility: hidden !important;
+    opacity: 0 !important;
+    display: none !important;
+}
+
+/* =========================================
+   GREY SCALE INACTIVE BUOY MARKERS
+   ========================================= */
+
+.inactive-marker {
+    filter: grayscale(100%) opacity(0.7);
+}
+
+/* =========================================
+   OFFCANVAS FIXES
    ========================================= */
 .offcanvas {
     /* Navbar is 9999, so this must be higher */
@@ -12,7 +62,7 @@
 }
 
 /* =========================================
-   8. DESKTOP MENU "POPUP" STYLE
+   DESKTOP MENU "POPUP" STYLE
    ========================================= */
 @media (min-width: 769px) {
     /* This targets the collapsible area only on larger screens.
@@ -51,7 +101,7 @@
 }
 
 /* =========================================
-   7. SENSOR CARD ACCORDION STYLES
+   SENSOR CARD ACCORDION STYLES
    ========================================= */
 
 /* Make the Accordion Header (the clickable part) smaller */
@@ -88,7 +138,7 @@
 }
 
 /* =========================================
-   1. MAIN LAYOUT & NAVBAR (Desktop Defaults)
+   MAIN LAYOUT & NAVBAR (Desktop Defaults)
    ========================================= */
 .custom-navbar {
     position: fixed;
@@ -157,7 +207,7 @@ body {
 }
 
 /* =========================================
-   3. DESKTOP LOGO & TITLE
+   DESKTOP LOGO & TITLE
    ========================================= */
 .navbar-logo {
     height: 80px; /* Fixed height prevents "whole screen" issue */
@@ -175,7 +225,7 @@ body {
 }
 
 /* =========================================
-   4. BUTTON/PILL STYLING
+   BUTTON/PILL STYLING
    ========================================= */
 .nav-pills .nav-link {
     white-space: nowrap !important;
@@ -188,7 +238,7 @@ body {
 }
 
 /* =========================================
-   5. DROPDOWN MENU COLORS
+   DROPDOWN MENU COLORS
    ========================================= */
 .dropdown-menu {
     background-color: #f8f9fa !important;
@@ -202,7 +252,7 @@ body {
 }
 
 /* =========================================
-   6. UTILITIES
+   UTILITIES
    ========================================= */
 /* Helper to center content in footer/cards if needed */
 .d-flex-center {

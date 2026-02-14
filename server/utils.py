@@ -83,10 +83,20 @@ def get_measurement_summary(sensor_name, include_health=False):
     if not sensor:
         return {"error": f"Sensor '{sensor_name}' not found"}
 
+    response = {
+        "sensor_name": sensor.name,
+        "latitude": sensor.latitude,  # Crucial: Always return this!
+        "longitude": sensor.longitude,  # Crucial: Always return this!
+        "timezone": sensor.timezone,
+        "most_recent_measurements": [],
+        "status": "offline"  # Default to offline
+    }
+
     recent_data = get_most_recent(sensor_name)
 
     if not recent_data:
-        return {"message": f"No data available for sensor '{sensor_name}'"}
+        response["message"] = f"No recent data for '{sensor_name}'"
+        return response
 
     summary_list = []
 
@@ -99,16 +109,12 @@ def get_measurement_summary(sensor_name, include_health=False):
             "timestamp": data_obj.timestamp
         })
 
-    return {
-        "sensor_name": sensor.name,
-        "latitude": sensor.latitude,
-        "longitude": sensor.longitude,
-        "timezone": sensor.timezone,
-        "most_recent_measurements": summary_list
-    }
+    response["most_recent_measurements"] = summary_list
+    response["status"] = "online"  # Could add logic here to check if timestamp is < time (e.g. 2hours)
 
+    return response
 
-def create_map_markers(selected_sensor_name=None):
+def create_map_markers(selected_sensor_name=None, show_inactive=False):
     """
     Generates map markers.
     If selected_sensor_name is provided, it zooms in on that sensor and makes it bigger.
@@ -126,10 +132,15 @@ def create_map_markers(selected_sensor_name=None):
         lat = s.get('latitude')
         lon = s.get('longitude')
         s_type = s.get('device_type')
-        is_active = s.get('active', False)
+        is_active = s.get('active', False) #If the key 'active' exists return it otherwise return false
+
+        if not is_active and not show_inactive:
+            continue
 
         if lat is None or lon is None:
             continue
+
+        extra_classes = "" if is_active else "inactive-marker"
 
         # Highlight Logic
         is_selected = (name == selected_sensor_name)
@@ -141,14 +152,16 @@ def create_map_markers(selected_sensor_name=None):
                 "iconUrl": "/assets/buoy.svg",
                 "iconSize": [60, 60],  # Highlighted = Big
                 "iconAnchor": [30, 30],
-                "popupAnchor": [0, -30]
+                "popupAnchor": [0, -30],
+                "className": extra_classes
             }
         else:
             icon_opts = {
                 "iconUrl": "/assets/buoy.svg",
                 "iconSize": [30, 30],  # Standard = Normal
                 "iconAnchor": [15, 15],
-                "popupAnchor": [0, -20]
+                "popupAnchor": [0, -20],
+                "className": extra_classes  # <--- Apply Class
             }
 
         # Popup Content
@@ -193,32 +206,7 @@ def create_instructions_card():
     active_sensors = [s for s in sensors if s.get('active', False)]
     offline_sensors = [s for s in sensors if not s.get('active', False)]
 
-    # Helper function to create a clean list of links
-    def make_sensor_list(sensor_list):
-        if not sensor_list:
-            return html.Div("No sensors found.", className="text-muted small p-2")
-
-        return dbc.ListGroup(
-            [
-                dbc.ListGroupItem(
-                    html.A(
-                        [
-                            html.I(className="bi bi-circle-fill text-success me-2" if s.get(
-                                'active') else "bi bi-circle-fill text-secondary me-2", style={"fontSize": "0.7rem"}),
-                            s.get('name', 'Unknown')
-                        ],
-                        # Link to the dashboard for this specific sensor
-                        href=f"/dashboard?sensor={s.get('name')}",
-                        className="text-decoration-none text-dark d-flex align-items-center"
-                    ),
-                    className="p-1 border-0 small action-item"
-                )
-                for s in sensor_list
-            ],
-            flush=True
-        )
-
-        # Helper function to create a stylish "Title + Subtitle" list
+    # Helper function to create a stylish "Title + Subtitle" list
     def make_sensor_list(sensor_list):
         if not sensor_list:
             return html.Div("No sensors found.", className="text-muted small p-2")
@@ -292,7 +280,6 @@ def create_instructions_card():
             dbc.Collapse(
                 dbc.CardBody(
                     [
-                        # UPDATED ACCORDION WITH NEW CLASS
                         dbc.Accordion(
                             [
                                 dbc.AccordionItem(
@@ -301,8 +288,30 @@ def create_instructions_card():
                                     item_id="active-item"
                                 ),
                                 dbc.AccordionItem(
-                                    make_sensor_list(offline_sensors),
-                                    title=f"Past Deployments ({len(offline_sensors)})",
+                                    [
+                                        dbc.Row(
+                                            [
+                                                dbc.Col(html.Span("Show on Map",
+                                                                  className="small text-muted fw-bold",
+                                                                  style={"fontSize": "10px"}),
+                                                        className="p-0"
+                                                        ),
+                                                dbc.Col(
+                                                    dbc.Switch(
+                                                        id="show-inactive-switch",
+                                                        value=False,  # Default Off
+                                                        className="d-flex justify-content-end",
+                                                        style={"minHeight": "unset"}
+                                                    )
+                                                )
+                                            ],
+                                            className="mb-2 g-0 border-bottom pb-2 align-items-center mx-1",
+                                            style={"marginTop": "-15px", "paddingTop": "0px"}
+                                        ),
+                                        # The list of sensors follows the toggle
+                                        make_sensor_list(offline_sensors)
+                                    ],
+                                    title=f"Inactive ({len(offline_sensors)})",
                                     item_id="offline-item"
                                 ),
                             ],

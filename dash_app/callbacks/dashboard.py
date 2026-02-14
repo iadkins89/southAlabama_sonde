@@ -1,4 +1,4 @@
-from dash import callback, Input, Output, State, html, dcc
+from dash import callback, Input, Output, State, html, dcc, ALL, ctx, no_update
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
@@ -7,9 +7,11 @@ from server.utils import save_data_to_csv, get_measurement_summary
 from server.models import (get_data,
                            get_sensor_timezone,
                            get_sensor_by_name,
-                           get_most_recent)
+                           get_most_recent,
+                           get_past_deployments)
 import pytz
 from dateutil.parser import parse as parse_date
+
 # ----------------------------
 # Time series graphs
 # ----------------------------
@@ -17,29 +19,35 @@ from dateutil.parser import parse as parse_date
     Output('multi-sensor-graph', 'children'),
     [
         Input("date-range-radio", "value"),
+        Input("historic-date-slider", "value"),
         Input("sensor-name-store", "data"),
+        Input("selected-deployment-store", "data"),
         Input("live-sensor-data", "data")
     ]
 )
-def update_multi_sensor_graph(date_range_value, sensor_name, live_data):
+def update_multi_sensor_graph(radio, slider, sensor_name, deploy_data, live_data):
 
     if not sensor_name:
         return html.Div("No sensor selected.")
 
-    now = datetime.utcnow()
-    if date_range_value == "2-days":
-        start = now - timedelta(days=2)
-    elif date_range_value == "1-week":
-        start = now - timedelta(weeks=1)
-    elif date_range_value == "1-month":
-        start = now - timedelta(weeks=4)
-    elif date_range_value == "1-year":
-        start = now - timedelta(days=365)
+    if deploy_data and not deploy_data.get('is_current', False):
+        start = datetime.fromtimestamp(slider[0])
+        end = datetime.fromtimestamp(slider[1])
     else:
-        start = now - timedelta(days=2)
+        end = datetime.utcnow()
+        days = {"2-days": 2, "1-week": 7, "1-month": 30, "1-year": 365}.get(radio, 2)
+        start = end - timedelta(days=days)
+
+        if deploy_data and deploy_data.get('is_current', False):
+            # Parse the actual start date of the CURRENT deployment
+            deploy_start = parse_date(deploy_data['start_iso'])
+
+            # If the calculated start date is older than the deployment, clamp it
+            if start < deploy_start:
+                start = deploy_start
 
     # Query data with units
-    data = get_data(sensor_name, start, now, lora=False)
+    data = get_data(sensor_name, start, end, lora=False)
 
     if not data:
         return html.Div(f"No data available for sensor '{sensor_name}' in the selected date range.")
@@ -291,8 +299,18 @@ def update_sensor_health(sensor_name, live_data):
     )
 
 # ----------------------------
-# Summary Info
+# History Offcanvas
 # ----------------------------
+@callback(
+    Output("history-offcanvas", "is_open"),
+    Input("history-button", "n_clicks"),
+    [State("history-offcanvas", "is_open")],
+)
+def toggle_history_offcanvas(n_clicks, is_open):
+    if n_clicks:
+        return not is_open
+    return is_open
+
 
 @callback(
     Output("sensor-image", "src"),
@@ -315,25 +333,75 @@ def get_sensor_pic(sensor_name):
     [Output("card-title", "children"),
      Output("summary-content", "children")],
     [Input("sensor-name-store", "data"),
-    Input("live-sensor-data", "data")]
+    Input("live-sensor-data", "data"),
+     Input("selected-deployment-store", "data")]
 )
-def update_summary_from_url(sensor_name, live_data):
-    if not sensor_name:
-        return "No Sensor Found", html.P("No sensor data was found.", className="text-warning")
-
+def update_summary_from_url(sensor_name, live_data, deploy_data):
     # Fetch summary information for the sensor
     summary = get_measurement_summary(sensor_name)
+
+    if deploy_data and not deploy_data.get('is_current', False):
+        # Render "Past Deployment" Card
+        title = html.Div(f"Historic Data: {deploy_data['site_name']}", className="fw-bold text-center")
+
+        content = html.Div([
+            html.P(f"Deployed: {deploy_data['range']}", className="text-muted text-center"),
+            html.Hr(),
+            html.P("Viewing archived data for this period.", className="alert alert-warning text-center small")
+        ])
+        return title, content
+
+    if not sensor_name:
+        return "No Sensor Found", html.P("No sensor data was found.", className="text-warning")
 
     if "error" in summary:
         return sensor_name, html.P(summary["error"], className="text-danger")
 
+    # Format Title
+    title_name = sensor_name + " " + "Information"
+    title_name = title_name.title()
+
+    title = html.Div(
+        title_name,
+        style={
+            "text-align": "center",
+            "font-weight": "bold"
+        },
+    )
+
+    # Format location
+    latitude = str(summary['latitude']) + u'\N{DEGREE SIGN}' + 'N'
+    longitude = str(summary['longitude']) + u'\N{DEGREE SIGN}' + 'W'
+    location = latitude + "   " + longitude
+
     if "message" in summary:
-        return sensor_name, html.P(summary["message"], className="text-info")
+        content = html.Div(
+            [
+                html.Div(
+                    location,
+                    style={
+                        "text-align": "center",
+                        "font-size": "14px",
+                        "margin-bottom": "10px",
+                    }
+                ),
+                html.P(summary["message"], className="text-info")
+            ]
+        )
+        return title, content
 
     # Prepare content dynamically based on the most recent measurements
     recent_measurements = summary.get("most_recent_measurements", [])
 
     if not recent_measurements:
+        html.Div(
+            location,
+            style={
+                "text-align": "center",
+                "font-size": "14px",
+                "margin-bottom": "10px",
+            }
+        ),
         return sensor_name, html.P("No data received yet.", className="text-warning")
 
     tz_str = summary.get("timezone", "UTC")
@@ -347,17 +415,7 @@ def update_summary_from_url(sensor_name, live_data):
         timestamp_str = str(recent_measurements[0]["timestamp"])
         timestamp_str = f"{timestamp_str} ({tz_str})"
 
-    #Format title
-    title_name = sensor_name + " " + "Information"
-    title_name = title_name.title()
 
-    title = html.Div(
-        title_name,
-        style={
-            "text-align": "center",
-            "font-weight": "bold"
-        },
-    )
     # Format the content with parameters and values
     parameter_list = html.Div(
         [
@@ -371,10 +429,6 @@ def update_summary_from_url(sensor_name, live_data):
         ],
         style={"list-style-type": "none", "padding": "0", "margin": "0"}  # Remove bullet points and extra spacing
     )
-
-    latitude = str(summary['latitude']) + u'\N{DEGREE SIGN}' + 'N'
-    longitude = str(summary['longitude']) + u'\N{DEGREE SIGN}' + 'W'
-    location = latitude + "   " + longitude
 
     # Combine the timestamp and parameters
     content = html.Div(
@@ -399,3 +453,93 @@ def update_summary_from_url(sensor_name, live_data):
     )
 
     return title, content
+
+# ----------------------------
+# Past Locations
+# ----------------------------
+@callback(
+    [Output("date-range-radio", "style"),
+     Output("historic-controls-container", "style"),
+     Output("historic-date-slider", "min"),
+     Output("historic-date-slider", "max"),
+     Output("historic-date-slider", "marks"),
+     Output("historic-date-slider", "value"),
+     Output("historic-date-slider", "tooltip")],  # <--- Add this Output
+    Input("selected-deployment-store", "data")
+)
+def toggle_controls(deploy_data):
+    # Default Tooltip Config (Hidden)
+    hidden_tooltip = {"always_visible": False}
+
+    if not deploy_data or deploy_data.get('is_current', False):
+        return {"display": "inline-flex"}, {"display": "none"}, 0, 100, {}, [0, 100], hidden_tooltip
+
+    start = parse_date(deploy_data['start_iso'])
+    end = parse_date(deploy_data['end_iso']) if deploy_data.get('end_iso') else datetime.utcnow()
+
+    min_ts, max_ts = int(start.timestamp()), int(end.timestamp())
+
+    marks = {
+        min_ts: {"label": start.strftime("%b %d"), "style": {"transform": "translate(0, 5px)", "whiteSpace": "nowrap"}},
+        max_ts: {"label": end.strftime("%b %d"),
+                 "style": {"transform": "translate(-100%, 5px)", "whiteSpace": "nowrap"}}
+    }
+
+    # Return everything, ensuring tooltip remains hidden
+    return {"display": "none"}, {"display": "block"}, min_ts, max_ts, marks, [min_ts, max_ts], hidden_tooltip
+
+
+# 2. UPDATE SLIDER LABEL (Readable Dates)
+@callback(
+    Output("slider-date-label", "children"),
+    [Input("historic-date-slider", "value"),
+     Input("historic-date-slider", "drag_value")]
+)
+def update_slider_label(value, drag_value):
+    # Prefer drag_value for instant feedback
+    current = drag_value if drag_value else value
+
+    if not current or len(current) < 2: return "Loading..."
+
+    start = datetime.fromtimestamp(current[0])
+    end = datetime.fromtimestamp(current[1])
+
+    return f"{start.strftime('%b %d, %Y')} — {end.strftime('%b %d, %Y')}"
+
+@callback(
+    [Output("selected-deployment-store", "data"), Output("deployments-accordion", "active_item")],
+    Input({"type": "deployment-item", "index": ALL}, "n_clicks"),
+    State("sensor-name-store", "data")
+)
+def select_deployment(clicks, sensor_name):
+    trigger = ctx.triggered_id
+    if not trigger or not isinstance(trigger, dict): raise PreventUpdate
+
+    index = trigger['index']
+    deployments = get_past_deployments(sensor_name)
+    if index < len(deployments):
+        return deployments[index], "" # Set Data, Close Accordion
+    return no_update, ""
+
+@callback(
+    Output("history-list-content", "children"),
+    Input("sensor-name-store", "data")
+)
+def update_history_list(sensor_name):
+    if not sensor_name: return []
+    deployments = get_past_deployments(sensor_name)
+
+    return [
+        dbc.ListGroupItem([
+            html.Div([
+                html.Strong("Current Deployment" if d['is_current'] else d['range'], className="small"),
+                html.Span(d['duration'],
+                          className=f"badge {'bg-success' if d['is_current'] else 'bg-light text-dark'} ms-2")
+            ], className="d-flex justify-content-between"),
+            html.Small(f"Lat: {d['latitude']:.4f}", className="text-muted d-block")
+        ], action=True, id={"type": "deployment-item", "index": i})
+        for i, d in enumerate(deployments)
+    ]
+
+
+

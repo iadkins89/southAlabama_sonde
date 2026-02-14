@@ -15,7 +15,7 @@ def layout():
             dl.Map(
                 [
                     dl.TileLayer(url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"),
-                    dl.LayerGroup(children=markers)
+                    dl.LayerGroup(children=markers, id="map-markers")
                 ],
                 center=map_center,
                 zoom=map_zoom,
