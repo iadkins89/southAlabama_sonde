@@ -1,7 +1,6 @@
-from dash import html, callback, Output, Input, State, ctx
+from dash import html
 import dash_bootstrap_components as dbc
 from dash import dcc
-
 
 def create_menu():
     navmenu = dbc.Navbar(

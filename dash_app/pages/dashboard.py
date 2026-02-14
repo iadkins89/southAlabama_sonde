@@ -31,8 +31,9 @@ def layout(sensor=None, **other_unknown_query_strings):
                         [
                             dl.TileLayer(
                                 url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"),
-                            dl.LayerGroup(children=markers)
+                            dl.LayerGroup(children=markers, id="map-markers")
                         ],
+                        id="dashboard-map",
                         center=map_center,
                         zoom=map_zoom,
                         style={"width": "100%", "height": "50vh"},

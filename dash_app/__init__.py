@@ -10,7 +10,7 @@ def create_app(server):
 		server=server,
 		use_pages=True,
 		suppress_callback_exceptions=True,
-		external_stylesheets=[dbc.themes.MINTY],
+		external_stylesheets=[dbc.themes.MINTY, dbc.icons.BOOTSTRAP],
 		external_scripts=[socketio_cdn]
 	)
 

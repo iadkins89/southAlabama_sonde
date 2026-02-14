@@ -1,4 +1,4 @@
-from dash import callback, Input, Output, State, no_update, html, dcc
+from dash import callback, Input, Output, State, html, dcc
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
@@ -10,7 +10,6 @@ from server.models import (get_data,
                            get_most_recent)
 import pytz
 from dateutil.parser import parse as parse_date
-
 # ----------------------------
 # Time series graphs
 # ----------------------------

@@ -174,8 +174,8 @@ def create_map_markers(selected_sensor_name=None):
         markers.append(
             dl.Marker(
                 position=[lat, lon],
+                title=name,
                 children=[
-                    dl.Tooltip(name),
                     dl.Popup(popup_content, closeButton=False)
                 ],
                 icon=icon_opts
@@ -307,7 +307,7 @@ def create_instructions_card():
                                 ),
                             ],
                             flush=True,
-                            start_collapsed=False,
+                            start_collapsed=True,
                             always_open=True,
                             # THIS CLASS connects to the new CSS
                             className="sensor-accordion"
