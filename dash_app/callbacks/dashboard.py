@@ -340,23 +340,6 @@ def update_summary_from_url(sensor_name, live_data, deploy_data):
     # Fetch summary information for the sensor
     summary = get_measurement_summary(sensor_name)
 
-    if deploy_data and not deploy_data.get('is_current', False):
-        # Render "Past Deployment" Card
-        title = html.Div(f"Historic Data: {deploy_data['site_name']}", className="fw-bold text-center")
-
-        content = html.Div([
-            html.P(f"Deployed: {deploy_data['range']}", className="text-muted text-center"),
-            html.Hr(),
-            html.P("Viewing archived data for this period.", className="alert alert-warning text-center small")
-        ])
-        return title, content
-
-    if not sensor_name:
-        return "No Sensor Found", html.P("No sensor data was found.", className="text-warning")
-
-    if "error" in summary:
-        return sensor_name, html.P(summary["error"], className="text-danger")
-
     # Format Title
     title_name = sensor_name + " " + "Information"
     title_name = title_name.title()
@@ -368,6 +351,20 @@ def update_summary_from_url(sensor_name, live_data, deploy_data):
             "font-weight": "bold"
         },
     )
+
+    if deploy_data and not deploy_data.get('is_current', False):
+        content = html.Div([
+            title,
+            html.Hr(),
+            html.P("Viewing archived data for this period.", className="alert alert-warning text-center small")
+        ])
+        return title, content
+
+    if not sensor_name:
+        return "No Sensor Found", html.P("No sensor data was found.", className="text-warning")
+
+    if "error" in summary:
+        return sensor_name, html.P(summary["error"], className="text-danger")
 
     # Format location
     latitude = str(summary['latitude']) + u'\N{DEGREE SIGN}' + 'N'
@@ -507,19 +504,22 @@ def update_slider_label(value, drag_value):
     return f"{start.strftime('%b %d, %Y')} — {end.strftime('%b %d, %Y')}"
 
 @callback(
-    [Output("selected-deployment-store", "data"), Output("deployments-accordion", "active_item")],
+    [Output("selected-deployment-store", "data"),
+     Output("history-offcanvas", "is_open", allow_duplicate=True)],
     Input({"type": "deployment-item", "index": ALL}, "n_clicks"),
-    State("sensor-name-store", "data")
+    State("sensor-name-store", "data"),
+    prevent_initial_call=True
 )
 def select_deployment(clicks, sensor_name):
     trigger = ctx.triggered_id
-    if not trigger or not isinstance(trigger, dict): raise PreventUpdate
+    if not trigger or not isinstance(trigger, dict):
+        raise PreventUpdate
 
     index = trigger['index']
     deployments = get_past_deployments(sensor_name)
     if index < len(deployments):
-        return deployments[index], "" # Set Data, Close Accordion
-    return no_update, ""
+        return deployments[index], False
+    return no_update, no_update
 
 @callback(
     Output("history-list-content", "children"),
@@ -540,6 +540,3 @@ def update_history_list(sensor_name):
         ], action=True, id={"type": "deployment-item", "index": i})
         for i, d in enumerate(deployments)
     ]
-
-
-

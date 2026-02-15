@@ -36,12 +36,13 @@ def layout(sensor=None, **other_unknown_query_strings):
                         id="dashboard-map",
                         center=map_center,
                         zoom=map_zoom,
-                        style={"width": "100%", "height": "50vh"},
+                        style={"width": "100%", "height": "55vh"},
                         zoomControl=True
                     ),
                     className="shadow-sm border-0"
                 ),
                 xs=12, sm=12, md=12, lg=6,
+                className="h-100"
             ),
 
             # Column for the sensor card
@@ -81,20 +82,21 @@ def layout(sensor=None, **other_unknown_query_strings):
                                                         className="sensor-image"
                                                     )
                                                 ],
-                                                className="image-container"
+                                                className="image-container",
                                             ),
-                                        ], width='auto'),
-                                    ]
+                                        ], xs=12, md="auto"),
+                                    ], className="align-items-center"
                                 ),
-                            ]
+                            ],
+                            style = {"overflowY": "auto"},
                         ),
 
                         dbc.CardFooter([
                             dbc.Button("Download Data", id="download-button", size="sm", color="light"),
                             dbc.Button("Sensor Health", id="sensor-health-button", size="sm", color="light",
                                        className="ms-2"),
-                            dbc.Button("Deployment History", id="history-button", size="sm", color="light", className="border"),
-                        ]),
+                            dbc.Button("Deployment History", id="history-button", size="sm", color="light",),
+                        ], className="d-flex justify-content-center py-2 bg-white border-top"),
 
                         dbc.Offcanvas(
                             html.Div([
@@ -155,7 +157,7 @@ def layout(sensor=None, **other_unknown_query_strings):
                             ),
                             id="history-offcanvas",
                             title="Deployment History",
-                            placement="end",
+                            #placement="end",
                             is_open=False,
                         ),
                     ],

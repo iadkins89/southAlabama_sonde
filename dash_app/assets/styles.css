@@ -20,7 +20,7 @@
 /* 3. Shrink the actual list items (the deployment rows) */
 #history-list-content .list-group-item {
     padding: 4px 10px !important;    /* Tighten the rows */
-    font-size: 0.75rem !important;   /* Small text */
+    font-size: 1.00rem !important;   /* Small text */
     border-left: none;
     border-right: none;
 }
