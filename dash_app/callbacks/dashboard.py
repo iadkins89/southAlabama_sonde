@@ -3,7 +3,7 @@ from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
 from datetime import datetime, timedelta
-from server.utils import save_data_to_csv, get_measurement_summary
+from server.utils import save_data_to_csv, get_measurement_summary,create_map_markers
 from server.models import (get_data,
                            get_sensor_timezone,
                            get_sensor_by_name,
@@ -11,6 +11,8 @@ from server.models import (get_data,
                            get_past_deployments)
 import pytz
 from dateutil.parser import parse as parse_date
+import dash_leaflet as dl
+
 
 # ----------------------------
 # Time series graphs
@@ -540,3 +542,52 @@ def update_history_list(sensor_name):
         ], action=True, id={"type": "deployment-item", "index": i})
         for i, d in enumerate(deployments)
     ]
+
+#-----------------
+# MAP UPDATE
+#-----------------
+
+# Add this to dashboard.py
+@callback(
+    [Output("map-markers", "children", allow_duplicate=True),
+     Output("dashboard-map", "center"),
+     Output("dashboard-map", "zoom")],
+    [Input("selected-deployment-store", "data"),
+     Input("sensor-name-store", "data")],
+    prevent_initial_call=True
+)
+def update_map_view(deploy_data, sensor_name):
+    # 1. LIVE MODE (Default or Current Deployment)
+    if not deploy_data or deploy_data.get('is_current', False):
+        # Reuse your existing helper to get the live marker/location
+        # create_map_markers returns a tuple: (children, center, zoom)
+        return create_map_markers(sensor_name)
+
+    # 2. HISTORIC MODE
+    lat = deploy_data.get('latitude')
+    lon = deploy_data.get('longitude')
+
+    # Safety check
+    if lat is None or lon is None:
+        return no_update, no_update, no_update
+
+    icon_opts = {
+        "iconUrl": "/assets/buoy.svg",
+        "iconSize": [30, 30],  # Standard = Normal
+        "iconAnchor": [15, 15],
+        "popupAnchor": [0, -20],
+        "className": "inactive-marker"   # <--- Apply Class
+    }
+
+    # Create the "Greyed Out" Marker
+    # IMPORTANT: Ensure '/assets/buoy.png' matches the actual filename of your icon
+    historic_marker = dl.Marker(
+        position=[lat, lon],
+        children=[
+            dl.Tooltip(f"Past Deployment: {deploy_data.get('range')}")
+        ],
+        icon=icon_opts
+    )
+
+    # Return: [List of Markers], [Lat, Lon], ZoomLevel
+    return [historic_marker], [lat, lon], 12
