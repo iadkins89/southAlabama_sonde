@@ -3,7 +3,7 @@ from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
 from datetime import datetime, timedelta
-from server.utils import save_data_to_csv, get_measurement_summary,create_map_markers
+from server.utils import save_data_to_csv, get_measurement_summary,create_map_markers, get_deployment_statistics
 from server.models import (get_data,
                            get_sensor_timezone,
                            get_sensor_by_name,
@@ -339,9 +339,6 @@ def get_sensor_pic(sensor_name):
      Input("selected-deployment-store", "data")]
 )
 def update_summary_from_url(sensor_name, live_data, deploy_data):
-    # Fetch summary information for the sensor
-    summary = get_measurement_summary(sensor_name)
-
     # Format Title
     title_name = sensor_name + " " + "Information"
     title_name = title_name.title()
@@ -354,16 +351,60 @@ def update_summary_from_url(sensor_name, live_data, deploy_data):
         },
     )
 
-    if deploy_data and not deploy_data.get('is_current', False):
-        content = html.Div([
-            title,
-            html.Hr(),
-            html.P("Viewing archived data for this period.", className="alert alert-warning text-center small")
-        ])
-        return title, content
-
     if not sensor_name:
         return "No Sensor Found", html.P("No sensor data was found.", className="text-warning")
+
+    if deploy_data and not deploy_data.get('is_current', False):
+
+        # Use our new utility function!
+        stats = get_deployment_statistics(sensor_name, deploy_data)
+
+        if "error" in stats:
+            return title, html.P(stats["error"], className="text-danger text-center small")
+
+        # Formatting data for UI
+        location = f"{stats['latitude']}\u00B0N   {stats['longitude']}\u00B0W"
+        stat_rows = []
+
+        if stats["averages"]:
+            for avg in stats["averages"]:
+                display_name = f"Avg {avg['parameter'].replace('_', ' ').title()} ({avg['unit']})"
+
+                # Matches the Live View format exactly
+                stat_rows.append(
+                    dbc.Row(
+                        [
+                            dbc.Col(html.Div(display_name, style={'text-align': 'left', 'font-size': '14px'}), width=9),
+                            dbc.Col(html.Div(f"{round(avg['value'], 1)}",
+                                             style={'text-align': 'right', 'font-size': '14px'}), width=3),
+                        ]
+                    )
+                )
+        else:
+            stat_rows = [html.P("No data available for this period.", className="text-warning text-center small")]
+
+        parameter_list = html.Div(
+            stat_rows,
+            style={"list-style-type": "none", "padding": "0", "margin": "0"}
+        )
+
+        content = html.Div(
+            [
+                html.Div("Archived View", className="badge bg-warning text-dark mb-2 d-table mx-auto"),
+                html.Div(
+                    f"{stats['range']} ({stats['duration']})",
+                    style={"text-align": "center", "font-weight": "bold"},
+                ),
+                html.Div(
+                    location,
+                    style={"text-align": "center", "font-size": "14px", "margin-bottom": "10px"}
+                ),
+                parameter_list,
+            ]
+        )
+        return title, content
+
+    summary = get_measurement_summary(sensor_name)
 
     if "error" in summary:
         return sensor_name, html.P(summary["error"], className="text-danger")
@@ -487,8 +528,6 @@ def toggle_controls(deploy_data):
     # Return everything, ensuring tooltip remains hidden
     return {"display": "none"}, {"display": "block"}, min_ts, max_ts, marks, [min_ts, max_ts], hidden_tooltip
 
-
-# 2. UPDATE SLIDER LABEL (Readable Dates)
 @callback(
     Output("slider-date-label", "children"),
     [Input("historic-date-slider", "value"),
@@ -546,8 +585,6 @@ def update_history_list(sensor_name):
 #-----------------
 # MAP UPDATE
 #-----------------
-
-# Add this to dashboard.py
 @callback(
     [Output("map-markers", "children", allow_duplicate=True),
      Output("dashboard-map", "center"),
@@ -557,13 +594,13 @@ def update_history_list(sensor_name):
     prevent_initial_call=True
 )
 def update_map_view(deploy_data, sensor_name):
-    # 1. LIVE MODE (Default or Current Deployment)
+    # Live mode
     if not deploy_data or deploy_data.get('is_current', False):
         # Reuse your existing helper to get the live marker/location
         # create_map_markers returns a tuple: (children, center, zoom)
         return create_map_markers(sensor_name)
 
-    # 2. HISTORIC MODE
+    # Historic mode
     lat = deploy_data.get('latitude')
     lon = deploy_data.get('longitude')
 
@@ -573,14 +610,12 @@ def update_map_view(deploy_data, sensor_name):
 
     icon_opts = {
         "iconUrl": "/assets/buoy.svg",
-        "iconSize": [30, 30],  # Standard = Normal
+        "iconSize": [30, 30],
         "iconAnchor": [15, 15],
         "popupAnchor": [0, -20],
-        "className": "inactive-marker"   # <--- Apply Class
+        "className": "inactive-marker"
     }
 
-    # Create the "Greyed Out" Marker
-    # IMPORTANT: Ensure '/assets/buoy.png' matches the actual filename of your icon
     historic_marker = dl.Marker(
         position=[lat, lon],
         children=[

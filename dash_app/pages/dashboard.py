@@ -79,7 +79,8 @@ def layout(sensor=None, **other_unknown_query_strings):
                                                         id="sensor-image",
                                                         src="/assets/no_image_available.png",  # Default placeholder
                                                         alt="Sensor Image",
-                                                        className="sensor-image"
+                                                        className="sensor-image",
+                                                        style = {"maxHeight": "220px", "objectFit": "contain"}
                                                     )
                                                 ],
                                                 className="image-container",
@@ -88,7 +89,7 @@ def layout(sensor=None, **other_unknown_query_strings):
                                     ], className="align-items-center"
                                 ),
                             ],
-                            style = {"overflowY": "auto"},
+                           style = {"overflowY": "auto"},
                         ),
 
                         dbc.CardFooter([
@@ -161,7 +162,8 @@ def layout(sensor=None, **other_unknown_query_strings):
                             is_open=False,
                         ),
                     ],
-                    className="sensor-card"
+                    className="sensor-card shadow-sm border-0",
+                    style = {"height": "55vh"}
                 ),
                 xs=12, sm=12, md=12, lg=6
             ),

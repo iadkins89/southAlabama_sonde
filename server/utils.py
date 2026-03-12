@@ -1,5 +1,4 @@
 import pandas as pd
-import os
 import io
 import base64
 from PIL import Image, ImageOps
@@ -7,8 +6,8 @@ from collections import defaultdict
 import dash_bootstrap_components as dbc
 from dash import html
 import dash_leaflet as dl
-import plotly.graph_objs as go
-from dash import dcc
+from dateutil.parser import parse as parse_date
+
 # from server.models import get_sensor_timezone, get_sensor_by_name, get_most_recent, get_all_sensors
 # TO DO: Refactor so function's here are "pure" and do not rely on DB import. This will avoid inline
 # imports and circular imports
@@ -85,8 +84,8 @@ def get_measurement_summary(sensor_name, include_health=False):
 
     response = {
         "sensor_name": sensor.name,
-        "latitude": sensor.latitude,  # Crucial: Always return this!
-        "longitude": sensor.longitude,  # Crucial: Always return this!
+        "latitude": sensor.latitude,
+        "longitude": sensor.longitude,
         "timezone": sensor.timezone,
         "most_recent_measurements": [],
         "status": "offline"  # Default to offline
@@ -113,6 +112,61 @@ def get_measurement_summary(sensor_name, include_health=False):
     response["status"] = "online"  # Could add logic here to check if timestamp is < time (e.g. 2hours)
 
     return response
+
+
+def get_deployment_statistics(sensor_name, deploy_data):
+    """
+    Takes a deployment dictionary, fetches the historical data,
+    and returns duration, dates, and the mean of each parameter.
+    """
+    from server.models import get_data
+
+    if not deploy_data:
+        return {"error": "No deployment data provided."}
+
+    stats = {
+        "duration": deploy_data.get('duration', 'Unknown'),
+        "range": deploy_data.get('range', ''),
+        "latitude": deploy_data.get('latitude', 0),
+        "longitude": deploy_data.get('longitude', 0),
+        "averages": []
+    }
+
+    try:
+        start_date = parse_date(deploy_data['start_iso'])
+        end_date = parse_date(deploy_data['end_iso']) if deploy_data.get('end_iso') else None
+
+        historic_data = get_data(sensor_name, start_date, end_date, lora=False)
+
+        if not historic_data:
+            return stats  # Averages list will just remain empty
+
+        # 3. Calculate sums and counts for the means
+        param_totals = {}
+        param_counts = {}
+        param_units = {}
+
+        for row in historic_data:
+            if row.name in ["latitude", "longitude"]:
+                continue  # Skip coordinates
+
+            param_totals[row.name] = param_totals.get(row.name, 0) + row.value
+            param_counts[row.name] = param_counts.get(row.name, 0) + 1
+            param_units[row.name] = row.unit
+
+        for param, total in param_totals.items():
+            avg_val = total / param_counts[param]
+            stats["averages"].append({
+                "parameter": param,
+                "value": avg_val,
+                "unit": param_units[param]
+            })
+
+    except Exception as e:
+        print(f"Error calculating deployment statistics: {e}")
+        stats["error"] = "Failed to calculate statistics."
+
+    return stats
 
 def create_map_markers(selected_sensor_name=None, show_inactive=False):
     """
@@ -148,21 +202,55 @@ def create_map_markers(selected_sensor_name=None, show_inactive=False):
         if is_selected:
             map_center = [lat, lon]
             map_zoom = 12
-            icon_opts = {
-                "iconUrl": "/assets/buoy.svg",
-                "iconSize": [60, 60],  # Highlighted = Big
-                "iconAnchor": [30, 30],
-                "popupAnchor": [0, -30],
-                "className": extra_classes
-            }
+            if s_type == "sonde":
+                icon_opts = {
+                    "iconUrl": "/assets/buoy.svg",
+                    "iconSize": [60, 60],  # Highlighted = Big
+                    "iconAnchor": [30, 30],
+                    "popupAnchor": [0, -30],
+                    "className": extra_classes
+                }
+            elif s_type == "tide_gauge":
+                icon_opts = {
+                    "iconUrl": "/assets/buoy.svg",
+                    "iconSize": [60, 60],  # Highlighted = Big
+                    "iconAnchor": [30, 30],
+                    "popupAnchor": [0, -30],
+                    "className": extra_classes
+                }
+            elif s_type == "wave_gauge":
+                icon_opts = {
+                    "iconUrl": "/assets/wave_gauge.svg",
+                    "iconSize": [60, 60],  # Highlighted = Big
+                    "iconAnchor": [30, 30],
+                    "popupAnchor": [0, -30],
+                    "className": extra_classes
+                }
         else:
-            icon_opts = {
-                "iconUrl": "/assets/buoy.svg",
-                "iconSize": [30, 30],  # Standard = Normal
-                "iconAnchor": [15, 15],
-                "popupAnchor": [0, -20],
-                "className": extra_classes  # <--- Apply Class
-            }
+            if s_type == "sonde":
+                icon_opts = {
+                    "iconUrl": "/assets/buoy.svg",
+                    "iconSize": [30, 30],  # Standard = Normal
+                    "iconAnchor": [15, 15],
+                    "popupAnchor": [0, -20],
+                    "className": extra_classes  # <--- Apply Class
+                }
+            elif s_type == "tide_gauge":
+                icon_opts = {
+                    "iconUrl": "/assets/tide_gauge.svg",
+                    "iconSize": [30, 30],  # Standard = Normal
+                    "iconAnchor": [15, 15],
+                    "popupAnchor": [0, -20],
+                    "className": extra_classes  # <--- Apply Class
+                }
+            elif s_type == "wave_gauge":
+                icon_opts = {
+                    "iconUrl": "/assets/wave_gauge.svg",
+                    "iconSize": [30, 30],  # Standard = Normal
+                    "iconAnchor": [15, 15],
+                    "popupAnchor": [0, -20],
+                    "className": extra_classes  # <--- Apply Class
+                }
 
         # Popup Content
         status_color = "success" if is_active else "secondary"
