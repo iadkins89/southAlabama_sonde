@@ -96,9 +96,9 @@ def update_multi_sensor_graph(radio, slider, sensor_name, deploy_data, live_data
         last_time = values["timestamps"][-1]
         last_val = values["values"][-1]
 
-        # Check if the last point is older than 24 hours
-        now_aware = datetime.utcnow().replace(tzinfo=pytz.utc).astimezone(target_tz)
-        is_active = (now_aware - last_time) < timedelta(days=1)
+        # Check if the last point is older than 2 hours
+        sensor = get_sensor_by_name(sensor_name)
+        is_active = sensor.is_online
 
         trace_data = []
 
@@ -313,7 +313,6 @@ def toggle_history_offcanvas(n_clicks, is_open):
         return not is_open
     return is_open
 
-
 @callback(
     Output("sensor-image", "src"),
     Input("sensor-name-store", "data"),
@@ -354,21 +353,21 @@ def update_summary_from_url(sensor_name, live_data, deploy_data):
     if not sensor_name:
         return "No Sensor Found", html.P("No sensor data was found.", className="text-warning")
 
+    # Past Deployment
     if deploy_data and not deploy_data.get('is_current', False):
 
-        # Use our new utility function!
         stats = get_deployment_statistics(sensor_name, deploy_data)
 
         if "error" in stats:
             return title, html.P(stats["error"], className="text-danger text-center small")
 
-        # Formatting data for UI
         location = f"{stats['latitude']}\u00B0N   {stats['longitude']}\u00B0W"
         stat_rows = []
 
         if stats["averages"]:
             for avg in stats["averages"]:
-                display_name = f"Avg {avg['parameter'].replace('_', ' ').title()} ({avg['unit']})"
+                formatted_unit = f"({avg['unit']})" if avg.get('unit') else ""
+                display_name = f"Avg {avg['parameter'].replace('_', ' ').title()} {formatted_unit}"
 
                 # Matches the Live View format exactly
                 stat_rows.append(
@@ -587,42 +586,49 @@ def update_history_list(sensor_name):
 #-----------------
 @callback(
     [Output("map-markers", "children", allow_duplicate=True),
-     Output("dashboard-map", "center"),
-     Output("dashboard-map", "zoom")],
+     Output("dashboard-map", "viewport")],
     [Input("selected-deployment-store", "data"),
      Input("sensor-name-store", "data")],
     prevent_initial_call=True
 )
 def update_map_view(deploy_data, sensor_name):
-    # Live mode
-    if not deploy_data or deploy_data.get('is_current', False):
-        # Reuse your existing helper to get the live marker/location
-        # create_map_markers returns a tuple: (children, center, zoom)
-        return create_map_markers(sensor_name)
+
+    if not sensor_name:
+        raise PreventUpdate
+
+    if not deploy_data or deploy_data.get('is_current', True):
+        markers, map_center, map_zoom = create_map_markers(sensor_name)
+        return markers, dict(center=map_center, zoom=map_zoom, transition="flyTo")
 
     # Historic mode
     lat = deploy_data.get('latitude')
     lon = deploy_data.get('longitude')
 
-    # Safety check
     if lat is None or lon is None:
-        return no_update, no_update, no_update
+        return no_update, no_update
+
+    sensor = get_sensor_by_name(sensor_name)
+    s_type = sensor.device_type if sensor else None
+
+    if s_type == "tide_gauge":
+        icon_file = "/assets/tide_gauge.svg"
+    elif s_type == "wave_gauge":
+        icon_file = "/assets/wave_gauge.svg"
+    else:
+        icon_file = "/assets/buoy.svg"
 
     icon_opts = {
-        "iconUrl": "/assets/buoy.svg",
-        "iconSize": [30, 30],
-        "iconAnchor": [15, 15],
-        "popupAnchor": [0, -20],
+        "iconUrl": icon_file,
+        "iconSize": [60, 60],
+        "iconAnchor": [30, 30],
+        "popupAnchor": [0, -30],
         "className": "inactive-marker"
     }
 
     historic_marker = dl.Marker(
         position=[lat, lon],
-        children=[
-            dl.Tooltip(f"Past Deployment: {deploy_data.get('range')}")
-        ],
+        title=f"Historic: {sensor_name}",
         icon=icon_opts
     )
 
-    # Return: [List of Markers], [Lat, Lon], ZoomLevel
-    return [historic_marker], [lat, lon], 12
+    return [historic_marker], dict(center=[lat, lon], zoom=12, transition="flyTo")

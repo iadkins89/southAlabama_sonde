@@ -42,14 +42,15 @@ document.addEventListener("DOMContentLoaded", function () {
         function elementDrag(e) {
             e = e || window.event;
             e.preventDefault();
-            // Calculate new position
-            pos1 = pos3 - e.clientX;
-            pos2 = pos4 - e.clientY;
+            // 1. Calculate how far the mouse moved (Delta)
+            let dx = e.clientX - pos3;
+            let dy = e.clientY - pos4;
+
+            // 2. Update stored position for the next frame
             pos3 = e.clientX;
             pos4 = e.clientY;
-            // Set element position
-            elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
-            elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
+
+            applyClampedMovement(dx, dy);
         }
 
         function closeDragElement() {
@@ -77,20 +78,47 @@ document.addEventListener("DOMContentLoaded", function () {
 
             var touch = e.touches[0];
 
-            // Calculate new position
-            pos1 = pos3 - touch.clientX;
-            pos2 = pos4 - touch.clientY;
+            let dx = touch.clientX - pos3;
+            let dy = touch.clientY - pos4;
+
             pos3 = touch.clientX;
             pos4 = touch.clientY;
 
-            // Set element position
-            elmnt.style.top = (elmnt.offsetTop - pos2) + "px";
-            elmnt.style.left = (elmnt.offsetLeft - pos1) + "px";
+            applyClampedMovement(dx, dy);
         }
 
         function closeTouchDrag() {
             document.removeEventListener('touchend', closeTouchDrag);
             document.removeEventListener('touchmove', elementTouchDrag);
+        }
+        function applyClampedMovement(dx, dy) {
+            // Get actual on-screen dimensions of the card
+            let rect = elmnt.getBoundingClientRect();
+
+            // Get Navbar bottom edge dynamically
+            let navbar = document.querySelector('.custom-navbar');
+            let minY = navbar ? navbar.getBoundingClientRect().bottom : 0;
+
+            // Use visualViewport for absolute safety on mobile browsers
+            let viewHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+            let viewWidth = window.visualViewport ? window.visualViewport.width : window.innerWidth;
+
+            // Calculate exactly how much empty pixel space we have in every direction.
+            // Math.max(0, ...) ensures we never calculate negative space if resized.
+            let maxMoveUp = Math.max(0, rect.top - minY);
+            let maxMoveDown = Math.max(0, viewHeight - rect.bottom);
+            let maxMoveLeft = Math.max(0, rect.left);
+            let maxMoveRight = Math.max(0, viewWidth - rect.right);
+
+            // Clamp the delta (dx, dy) so it can never exceed the available empty space
+            if (dy < 0 && Math.abs(dy) > maxMoveUp) dy = -maxMoveUp;       // Moving Up
+            if (dy > 0 && dy > maxMoveDown) dy = maxMoveDown;              // Moving Down
+            if (dx < 0 && Math.abs(dx) > maxMoveLeft) dx = -maxMoveLeft;   // Moving Left
+            if (dx > 0 && dx > maxMoveRight) dx = maxMoveRight;            // Moving Right
+
+            // Apply the safely clamped delta to the local offset
+            elmnt.style.top = (elmnt.offsetTop + dy) + "px";
+            elmnt.style.left = (elmnt.offsetLeft + dx) + "px";
         }
     }
 });

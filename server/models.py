@@ -1,6 +1,6 @@
 from server import db
 from sqlalchemy import Index, func
-from datetime import datetime
+from datetime import datetime, timedelta
 import pytz
 from werkzeug.security import generate_password_hash, check_password_hash
 from server.utils import compress_image
@@ -70,6 +70,29 @@ class Sensor(db.Model):
     # Relationship to data (Cascades delete: if sensor is deleted, data is deleted)
     data = db.relationship("SensorData", back_populates="sensor", cascade="all, delete-orphan")
 
+    @property
+    def is_online(self):
+        """
+        Dynamically calculates if the sensor is online based on
+        whether it has transmitted data in the last 2 hours.
+        """
+        # If the sensor is manually deactivated, it's considered offline
+        if not self.active:
+            return False
+
+        # Get the most recent data point for this sensor
+        latest_ping = SensorData.query.filter_by(sensor_id=self.id) \
+            .order_by(SensorData.timestamp.desc()) \
+            .first()
+
+        # If it has never sent data, it's offline
+        if not latest_ping:
+            return False
+
+        # Check if the latest ping was within the last 2 hours
+        two_hours_ago = datetime.utcnow() - timedelta(hours=2)
+        return latest_ping.timestamp >= two_hours_ago
+
 # Parameter table
 class Parameter(db.Model):
     __tablename__ = 'parameters'
@@ -123,7 +146,8 @@ def get_all_sensors():
         "longitude": s.longitude,
         "device_type": s.device_type,
         "image_data": s.image_data,
-        "active": s.active
+        "active": s.active,
+        "is_online": s.is_online
     } for s in sensors]
 
 def get_sensors_grouped_by_type():

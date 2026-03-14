@@ -179,95 +179,88 @@ def create_map_markers(selected_sensor_name=None, show_inactive=False):
 
     # Default View (Whole Bay)
     map_center = [30.4, -87.8]
-    map_zoom = 9
+    map_zoom = 10
 
     for s in sensors:
         name = s.get('name', 'Unknown')
         lat = s.get('latitude')
         lon = s.get('longitude')
         s_type = s.get('device_type')
-        is_active = s.get('active', False) #If the key 'active' exists return it otherwise return false
+        is_active = s.get('active', False)
+        is_online = s.get("is_online", False)
 
-        if not is_active and not show_inactive:
+        # Highlight Logic
+        is_selected = (name == selected_sensor_name)
+
+        if not is_active and not show_inactive and not is_selected:
             continue
 
         if lat is None or lon is None:
             continue
 
-        extra_classes = "" if is_active else "inactive-marker"
+        header_style = {}
+        button_style = {"color": "white", "width": "100%"}
 
-        # Highlight Logic
-        is_selected = (name == selected_sensor_name)
+        if not is_active:
+            status_text = "Deactivated"
+            header_class = "text-white p-2"
+            header_style = {"backgroundColor": "#b5b3b3"}
+            button_color = "light"
+            button_style.update({"backgroundColor": "#b5b3b3", "borderColor": "#b5b3b3"})
+            marker_class = "inactive-marker"
+        elif is_online:
+            status_text = "Online"
+            header_class = "text-white bg-primary p-2"
+            button_color = "primary"
+            marker_class = "online-marker"
+        else:
+            status_text = "Offline"
+            header_class = "text-white bg-secondary p-2"
+            button_color = "primary"
+            marker_class = "offline-marker"
 
+        if s_type == "tide_gauge":
+            icon_file = "/assets/tide_gauge.svg"
+        elif s_type == "wave_gauge":
+            icon_file = "/assets/wave_gauge.svg"
+        else:
+            icon_file = "/assets/buoy.svg"
+
+        #Set icon size
         if is_selected:
             map_center = [lat, lon]
             map_zoom = 12
-            if s_type == "sonde":
-                icon_opts = {
-                    "iconUrl": "/assets/buoy.svg",
-                    "iconSize": [60, 60],  # Highlighted = Big
-                    "iconAnchor": [30, 30],
-                    "popupAnchor": [0, -30],
-                    "className": extra_classes
-                }
-            elif s_type == "tide_gauge":
-                icon_opts = {
-                    "iconUrl": "/assets/buoy.svg",
-                    "iconSize": [60, 60],  # Highlighted = Big
-                    "iconAnchor": [30, 30],
-                    "popupAnchor": [0, -30],
-                    "className": extra_classes
-                }
-            elif s_type == "wave_gauge":
-                icon_opts = {
-                    "iconUrl": "/assets/wave_gauge.svg",
-                    "iconSize": [60, 60],  # Highlighted = Big
-                    "iconAnchor": [30, 30],
-                    "popupAnchor": [0, -30],
-                    "className": extra_classes
-                }
+            icon_size = [60, 60]
+            icon_anchor = [30, 30]
+            popup_anchor = [0, -30]
         else:
-            if s_type == "sonde":
-                icon_opts = {
-                    "iconUrl": "/assets/buoy.svg",
-                    "iconSize": [30, 30],  # Standard = Normal
-                    "iconAnchor": [15, 15],
-                    "popupAnchor": [0, -20],
-                    "className": extra_classes  # <--- Apply Class
-                }
-            elif s_type == "tide_gauge":
-                icon_opts = {
-                    "iconUrl": "/assets/tide_gauge.svg",
-                    "iconSize": [30, 30],  # Standard = Normal
-                    "iconAnchor": [15, 15],
-                    "popupAnchor": [0, -20],
-                    "className": extra_classes  # <--- Apply Class
-                }
-            elif s_type == "wave_gauge":
-                icon_opts = {
-                    "iconUrl": "/assets/wave_gauge.svg",
-                    "iconSize": [30, 30],  # Standard = Normal
-                    "iconAnchor": [15, 15],
-                    "popupAnchor": [0, -20],
-                    "className": extra_classes  # <--- Apply Class
-                }
+            icon_size = [30, 30]
+            icon_anchor = [15, 15]
+            popup_anchor = [0, -20]
 
-        # Popup Content
-        status_color = "success" if is_active else "secondary"
-        status_text = "Online" if is_active else "Offline"
+        icon_opts = {
+            "iconUrl": icon_file,
+            "iconSize": icon_size,
+            "iconAnchor": icon_anchor,
+            "popupAnchor": popup_anchor,
+            "className": marker_class
+        }
+
+        display_type = s_type.replace('_', ' ').title() if s_type else 'Unknown'
 
         popup_content = dbc.Card([
-            dbc.CardHeader(name, className=f"text-white bg-{status_color} p-2"),
+            dbc.CardHeader(name, className=header_class, style=header_style),
             dbc.CardBody([
-                html.P(f"Type: {s_type}", className="small mb-1"),
+                html.P(f"Type: {display_type}", className="small mb-1"),
                 html.P(f"Status: {status_text}", className="small mb-2 fw-bold"),
 
                 dbc.Button(
                     "View Dashboard",
                     href=f"/dashboard?sensor={name}",  # Standardized Query String
                     size="sm",
-                    color="primary",
-                    className="w-100"
+                    color=button_color,
+                    className="w-100",
+                    style=button_style
                 )
             ], className="p-2")
         ], className="border-0", style={"minWidth": "200px"})
@@ -277,7 +270,7 @@ def create_map_markers(selected_sensor_name=None, show_inactive=False):
                 position=[lat, lon],
                 title=name,
                 children=[
-                    dl.Popup(popup_content, closeButton=False)
+                    dl.Popup(popup_content, closeButton=False),
                 ],
                 icon=icon_opts
             )
@@ -285,14 +278,15 @@ def create_map_markers(selected_sensor_name=None, show_inactive=False):
 
     return markers, map_center, map_zoom
 
+
 def create_instructions_card():
     # Fetch fresh data every time the page loads
     from server.models import get_all_sensors
     sensors = get_all_sensors()
 
-    # Filter sensors
+    # Filter sensors based on explicit user intent (Active vs Deactivated)
     active_sensors = [s for s in sensors if s.get('active', False)]
-    offline_sensors = [s for s in sensors if not s.get('active', False)]
+    deactivated_sensors = [s for s in sensors if not s.get('active', False)]
 
     # Helper function to create a stylish "Title + Subtitle" list
     def make_sensor_list(sensor_list):
@@ -301,11 +295,19 @@ def create_instructions_card():
 
         list_items = []
         for s in sensor_list:
-
             s_type = s.get('device_type')
+            display_type = s_type.replace('_', ' ').title() if s_type else 'Unknown'
+            name = s.get('name', 'Unknown')
 
-            # Determine Dot Color
-            dot_class = "bi bi-circle-fill text-success" if s.get('active') else "bi bi-circle-fill text-secondary"
+            is_active = s.get('active', False)
+            is_online = s.get('is_online', False)
+
+            if not is_active:
+                dot_class = "bi bi-circle-fill text-secondary"  # Gray for deactivated
+            elif is_online:
+                dot_class = "bi bi-circle-fill text-success"  # Green for online
+            else:
+                dot_class = "bi bi-circle-fill text-secondary"
 
             item = dbc.ListGroupItem(
                 html.A(
@@ -316,25 +318,23 @@ def create_instructions_card():
                             className="me-3 d-flex align-items-center"
                         ),
 
-                        # COLUMN 2: The Text Stack (Name + Type)
+                        # COLUMN 2: The Text Stack (Name + Type) - Reverted to your original style!
                         html.Div(
                             [
-                                html.Span(s.get('name', 'Unknown'), className="fw-bold text-dark me-2",
+                                html.Span(name, className="fw-bold text-dark me-2",
                                           style={"fontSize": "0.9rem"}),
-                                html.Span(f"({s_type})", className="text-muted small",
+                                html.Span(f"({display_type})", className="text-muted small",
                                           style={"fontSize": "0.75rem", "paddingTop": "2px"})
                             ],
-                            # 'align-items-center' keeps them level
-                            # 'flex-wrap' allows the type to drop down if the name is too long
                             className="d-flex align-items-center flex-wrap"
                         )
                     ],
                     # Link setup
-                    href=f"/dashboard?sensor={s.get('name')}",
+                    href=f"/dashboard?sensor={name}",
                     className="text-decoration-none d-flex align-items-center w-100"
                 ),
-                className="p-2 border-0 border-bottom sensor-list-item",  # Added custom class for hover
-                action=True  # Makes the whole row clickable/hoverable
+                className="p-2 border-0 border-bottom sensor-list-item",
+                action=True
             )
             list_items.append(item)
 
@@ -360,7 +360,6 @@ def create_instructions_card():
                     )
                 ], className="d-flex justify-content-between align-items-center"),
                 className="bg-primary text-white",
-                # Add cursor style here to hint it is draggable
                 style={"cursor": "move"}
             ),
 
@@ -387,7 +386,7 @@ def create_instructions_card():
                                                 dbc.Col(
                                                     dbc.Switch(
                                                         id="show-inactive-switch",
-                                                        value=False,  # Default Off
+                                                        value=False,
                                                         className="d-flex justify-content-end",
                                                         style={"minHeight": "unset"}
                                                     )
@@ -396,21 +395,20 @@ def create_instructions_card():
                                             className="mb-2 g-0 border-bottom pb-2 align-items-center mx-1",
                                             style={"marginTop": "-15px", "paddingTop": "0px"}
                                         ),
-                                        # The list of sensors follows the toggle
-                                        make_sensor_list(offline_sensors)
+                                        # The list of deactivated sensors follows the toggle
+                                        make_sensor_list(deactivated_sensors)
                                     ],
-                                    title=f"Inactive ({len(offline_sensors)})",
+                                    title=f"Deactivated ({len(deactivated_sensors)})",
                                     item_id="offline-item"
                                 ),
                             ],
                             flush=True,
                             start_collapsed=True,
                             always_open=True,
-                            # THIS CLASS connects to the new CSS
                             className="sensor-accordion"
                         )
                     ],
-                    className="p-0"  # Remove padding so the list hits the edges
+                    className="p-0"
                 ),
                 id="instructions-body",
                 is_open=True
@@ -421,10 +419,10 @@ def create_instructions_card():
             "position": "absolute",
             "top": "20px",
             "left": "20px",
-            "width": "300px",  # Slightly wider to fit names
-            "zIndex": "1000",
+            "width": "300px",
+            "zIndex": "1050",
             "boxShadow": "0 4px 12px rgba(0,0,0,0.15)",
-            "maxHeight": "80vh",  # Prevent it from being taller than screen
-            "overflowY": "auto"  # Scroll if too many sensors
+            "maxHeight": "80vh",
+            "overflowY": "auto"
         },
     )

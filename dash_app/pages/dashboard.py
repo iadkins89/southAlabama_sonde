@@ -36,6 +36,7 @@ def layout(sensor=None, **other_unknown_query_strings):
                         id="dashboard-map",
                         center=map_center,
                         zoom=map_zoom,
+                        viewport={'center': map_center, 'zoom': map_zoom, 'transition': 'flyTo'},
                         style={"width": "100%", "height": "55vh"},
                         zoomControl=True
                     ),
@@ -79,8 +80,14 @@ def layout(sensor=None, **other_unknown_query_strings):
                                                         id="sensor-image",
                                                         src="/assets/no_image_available.png",  # Default placeholder
                                                         alt="Sensor Image",
-                                                        className="sensor-image",
-                                                        style = {"maxHeight": "220px", "objectFit": "contain"}
+                                                        className="sensor-image img-fluid",
+                                                        style = {
+                                                            "maxHeight": "220px",
+                                                            "width": "100%",
+                                                            "objectFit": "contain",
+                                                            "display": "block",
+                                                            "margin": "0 auto"
+                                                        }
                                                     )
                                                 ],
                                                 className="image-container",
@@ -89,6 +96,7 @@ def layout(sensor=None, **other_unknown_query_strings):
                                     ], className="align-items-center"
                                 ),
                             ],
+                            className="sensor-summary-container",
                            style = {"overflowY": "auto"},
                         ),
 
@@ -193,7 +201,7 @@ def layout(sensor=None, **other_unknown_query_strings):
                     html.Div([
                         html.Div([
                             html.Span("Playback History", className="fw-bold small me-2"),
-                            html.Span(id="slider-date-label", className="badge bg-secondary")
+                            html.Span(id="slider-date-label", className="badge bg-light")
                         ], className="d-flex justify-content-between align-items-center mb-3"),
 
                         html.Div(

@@ -1,3 +1,18 @@
+#instructions-card {
+    position: fixed;
+
+    /* Give it an explicit starting position! */
+    /* Make sure 'top' is larger than your navbar's height */
+    top: 80px;
+    left: 20px;
+
+    /* Crucial: Make sure these are NOT set so they don't fight the JS */
+    bottom: auto;
+    right: auto;
+    transform: none;
+    margin: 0;
+}
+
 /* =========================================
    COMPACT FOOTER ACCORDION
    ========================================= */

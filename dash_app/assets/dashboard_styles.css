@@ -1,4 +1,19 @@
 /* General Layout */
+/* Disable the scrolling trap on mobile devices */
+/* =========================================
+   NO SCROLLER SUMMARY CONTAINER ON MOBILE
+   ========================================= */
+@media (max-width: 768px) {
+    .sensor-summary-container {
+        max-height: none !important;     /* Allow it to expand normally */
+        overflow-y: visible !important;  /* Turn off the inner scrollbar */
+    }
+
+    .sensor-card {
+        height: auto !important;         /* Override the rigid 55vh inline style */
+        min-height: unset !important;
+    }
+}
 /* =========================================
    FIX DATE PICKER SIZING
    ========================================= */
