@@ -73,7 +73,7 @@ def update_sensor_information(submit_clicks, deactivate_clicks, original_name, n
 
     elif button_id == "update-submit-btn":
         # Normal Update: Set active=True
-        msg = create_or_update_sensor(new_name, lat, lon, dtype, image_data, active=True)
+        msg = create_or_update_sensor(new_name, lat, lon, dtype, image_data, active=is_active)
         return dbc.Alert(msg, color="success")
 
     return ""
