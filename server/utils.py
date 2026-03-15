@@ -178,8 +178,8 @@ def create_map_markers(selected_sensor_name=None, show_inactive=False):
     markers = []
 
     # Default View (Whole Bay)
-    map_center = [30.4, -87.8]
-    map_zoom = 10
+    map_center = [30.4, -87.95]
+    map_zoom = 9.5
 
     for s in sensors:
         name = s.get('name', 'Unknown')
