@@ -576,7 +576,7 @@ def update_history_list(sensor_name):
                 html.Span(d['duration'],
                           className=f"badge {'bg-success' if d['is_current'] else 'bg-light text-dark'} ms-2")
             ], className="d-flex justify-content-between"),
-            html.Small(f"Lat: {d['latitude']:.4f}", className="text-muted d-block")
+            html.Small(f"Lat: {d['latitude']:.4f}, Lon: {d['longitude']:.4f}", className="text-muted d-block")
         ], action=True, id={"type": "deployment-item", "index": i})
         for i, d in enumerate(deployments)
     ]
