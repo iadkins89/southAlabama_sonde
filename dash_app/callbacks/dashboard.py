@@ -586,7 +586,8 @@ def update_history_list(sensor_name):
 #-----------------
 @callback(
     [Output("map-markers", "children", allow_duplicate=True),
-     Output("dashboard-map", "viewport")],
+     Output("dashboard-map", "center"),
+     Output("dashboard-map", "zoom")],
     [Input("selected-deployment-store", "data"),
      Input("sensor-name-store", "data")],
     prevent_initial_call=True
@@ -598,7 +599,7 @@ def update_map_view(deploy_data, sensor_name):
 
     if not deploy_data or deploy_data.get('is_current', True):
         markers, map_center, map_zoom = create_map_markers(sensor_name)
-        return markers, dict(center=map_center, zoom=map_zoom, transition="flyTo")
+        return markers, map_center, map_zoom
 
     # Historic mode
     lat = deploy_data.get('latitude')
@@ -625,10 +626,10 @@ def update_map_view(deploy_data, sensor_name):
         "className": "inactive-marker"
     }
 
-    historic_marker = dl.Marker(
+    historic_marker = [dl.Marker(
         position=[lat, lon],
         title=f"Historic: {sensor_name}",
         icon=icon_opts
-    )
+    )]
 
-    return [historic_marker], dict(center=[lat, lon], zoom=12, transition="flyTo")
+    return historic_marker, [lat, lon], 12

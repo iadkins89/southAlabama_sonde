@@ -36,7 +36,6 @@ def layout(sensor=None, **other_unknown_query_strings):
                         id="dashboard-map",
                         center=map_center,
                         zoom=map_zoom,
-                        viewport={'center': map_center, 'zoom': map_zoom, 'transition': 'flyTo'},
                         style={"width": "100%", "height": "55vh"},
                         zoomControl=True
                     ),
