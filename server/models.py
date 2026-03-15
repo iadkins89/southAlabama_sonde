@@ -137,18 +137,42 @@ def get_sensor_timezone(sensor_name):
         return sensor.timezone
     return 'UTC'
 
+
 def get_all_sensors():
-    """Returns a list of all sensors as dictionaries."""
+    """Returns a list of all sensors as dictionaries.
+       Doesn't use is_online for efficiency.
+    """
     sensors = db.session.query(Sensor).all()
-    return [{
-        "name": s.name,
-        "latitude": s.latitude,
-        "longitude": s.longitude,
-        "device_type": s.device_type,
-        "image_data": s.image_data,
-        "active": s.active,
-        "is_online": s.is_online
-    } for s in sensors]
+
+    #Get the latest timestamp for ALL sensors in ONE query
+    latest_data = db.session.query(
+        SensorData.sensor_id,
+        func.max(SensorData.timestamp).label('latest_ts')
+    ).group_by(SensorData.sensor_id).all()
+
+    latest_pings = {row.sensor_id: row.latest_ts for row in latest_data}
+
+    two_hours_ago = datetime.utcnow() - timedelta(hours=2)
+
+    results = []
+    for s in sensors:
+        is_online = False
+        if s.active:
+            latest_ts = latest_pings.get(s.id)
+            if latest_ts and latest_ts >= two_hours_ago:
+                is_online = True
+
+        results.append({
+            "name": s.name,
+            "latitude": s.latitude,
+            "longitude": s.longitude,
+            "device_type": s.device_type,
+            "image_data": s.image_data,
+            "active": s.active,
+            "is_online": is_online
+        })
+
+    return results
 
 def get_sensors_grouped_by_type():
     sensors = get_all_sensors()
@@ -361,9 +385,6 @@ def create_or_update_sensor(name, latitude,
         db.session.rollback()
         return f"Database Error: {str(e)}"
 
-
-# In server/utils.py
-
 def get_past_deployments(sensor_name):
     """
     Fetches location history for a specific sensor.
@@ -400,7 +421,7 @@ def get_past_deployments(sensor_name):
             end_iso = None
 
         deployments.append({
-            "site_name": f"Deployment: {start_fmt}", # You can customize this if you have site names
+            "site_name": f"Deployment: {start_fmt}",
             "range": f"{start_fmt} - {end_fmt}",
             "duration": duration,
             "latitude": record.latitude,
