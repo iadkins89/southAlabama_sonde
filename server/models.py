@@ -280,20 +280,22 @@ def get_most_recent(sensor_name, Lora = False):
 
     return recent_data
 
-def create_or_update_sensor(name, latitude,
+def create_or_update_sensor(name,
+                            latitude,
                             longitude,
                             device_type,
                             image_data=None,
                             timezone='America/Chicago',
                             active = True,
-                            user_id = None):
+                            user_id = None,
+                            sensor_id=None):
     """Creates a new sensor."""
     try:
-        sensor = get_sensor_by_name(name)
         now = datetime.utcnow()
         action = None
 
         # Prevent invalid lat/lon
+        # This might should go into the callbacks that use this function
         try:
             lat_float, lon_float = float(latitude), float(longitude)
         except (ValueError, TypeError):
@@ -302,6 +304,12 @@ def create_or_update_sensor(name, latitude,
         if not (-90 <= lat_float <= 90) or not (-180 <= lon_float <= 180):
             return "Error: Coordinates out of range (Lat: -90 to 90, Lon: -180 to 180)"
 
+        sensor = None
+        if sensor_id:
+            sensor = Sensor.query.get(sensor_id)
+        elif name:
+            sensor = get_sensor_by_name(name)
+
         # New sensor
         if not sensor:
             sensor = Sensor(name = name)
@@ -309,7 +317,6 @@ def create_or_update_sensor(name, latitude,
 
             # Create the first history record
             new_history = LocationHistory(
-                sensor_id=sensor.id,  # Note: This might fail if ID isn't gen yet, see flush below
                 latitude=lat_float,
                 longitude=lon_float,
                 deployed_at=now
@@ -367,6 +374,7 @@ def create_or_update_sensor(name, latitude,
                     )
                     db.session.add(new_history)
 
+        sensor.name = name
         sensor.latitude = lat_float
         sensor.longitude = lon_float
         sensor.device_type = device_type

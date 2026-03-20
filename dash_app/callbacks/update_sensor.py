@@ -62,18 +62,45 @@ def update_sensor_information(submit_clicks, deactivate_clicks, original_name, n
 
     button_id = ctx.triggered[0]['prop_id'].split('.')[0]
 
+    sensor_to_update = get_sensor_by_name(original_name)
+
+    if not sensor_to_update:
+        return dbc.Alert(f"Error: Could not find sensor '{original_name}' in the database.", color="danger")
+
+    target_id = sensor_to_update.id
+
     if button_id == "toggle-active-btn":
         new_status = not is_active
-        msg = create_or_update_sensor(original_name, lat, lon, dtype, image_data=None, active=new_status)
+        # Pass the current database values to prevent saving unsaved form edits.
+        # Decouple this later to not use the create_or_update_sensor function
+        # instead create a dedicated function that changes the status and updates
+        # history.
+        msg = create_or_update_sensor(
+            name=sensor_to_update.name,
+            latitude=sensor_to_update.latitude,
+            longitude=sensor_to_update.longitude,
+            device_type=sensor_to_update.device_type,
+            image_data=None,
+            active=new_status,
+            sensor_id=target_id
+        )
 
         status_word = "Activated" if new_status else "Deactivated"
         color = "success" if new_status else "warning"
-        return dbc.Alert(f"Sensor '{original_name}' {status_word}. (Please refresh page to see button update)",
+        return dbc.Alert(f"Sensor '{original_name}' {status_word}. (Please refresh page to see update)",
                          color=color)
 
     elif button_id == "update-submit-btn":
         # Normal Update: Set active=True
-        msg = create_or_update_sensor(new_name, lat, lon, dtype, image_data, active=is_active)
+        msg = create_or_update_sensor(
+            new_name,
+            lat,
+            lon,
+            dtype,
+            image_data,
+            active=is_active,
+            sensor_id=target_id
+        )
         return dbc.Alert(msg, color="success")
 
     return ""
