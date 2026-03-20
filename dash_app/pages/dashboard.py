@@ -207,14 +207,13 @@ def layout(sensor=None, **other_unknown_query_strings):
                             dcc.RangeSlider(
                                 id="historic-date-slider",
                                 min=0, max=100, value=[0, 100],
-                                # Disable built-in tooltip (it shows raw numbers)
                                 tooltip={"always_visible": False}
                             ),
                             style={"padding": "0 10px"}
                         )
                     ], id="historic-controls-container", style={"display": "none"})
                 ],
-                className="radio-group mt-3"  # Keep your original class
+                className="radio-group mt-3"
             )
         ),
         dbc.Row(

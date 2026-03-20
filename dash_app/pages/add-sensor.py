@@ -38,9 +38,9 @@ def layout():
                             {'label': 'Eastern Time', 'value': 'America/New_York'},
                             {'label': 'UTC (Universal Standard)', 'value': 'UTC'}
                         ],
-                        value='America/Chicago',  # Default to Mobile time
+                        value='America/Chicago',  # Default to CST
                         clearable=False,
-                        style={'color': 'black'}  # Fixes dark mode visibility issues if present
+                        style={'color': 'black'}
                     ),
                     width=12, md=10
                 ),

@@ -234,7 +234,6 @@ def get_data(sensor_name, start_date, end_date, lora=False, localize_input=False
 def get_parameters(sensor_name):
     """
     Used to populate the 'Update Sensor' form.
-    New logic: Query distinct parameters from the data table.
     """
     sensor = get_sensor_by_name(sensor_name)
     if not sensor:
@@ -289,7 +288,6 @@ def create_or_update_sensor(name,
                             active = True,
                             user_id = None,
                             sensor_id=None):
-    """Creates a new sensor."""
     try:
         now = datetime.utcnow()
         action = None

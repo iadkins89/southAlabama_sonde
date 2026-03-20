@@ -18,7 +18,5 @@ def toggle_card(n, is_open):
     prevent_initial_call=True
 )
 def toggle_inactive_sensors(show_inactive):
-    # Re-generate markers with the new switch value
-    # We ignore center/zoom (using _) so the map doesn't jump when you toggle
     markers, _, _ = create_map_markers(show_inactive=show_inactive)
     return markers

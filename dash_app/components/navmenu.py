@@ -8,7 +8,7 @@ def create_menu():
             [
                 dcc.Store(id="navbar-state", data={"is_open": False}),
 
-                # HEADER ROW
+                # Header
                 dbc.Row(
                     [
                         # Logo
@@ -22,7 +22,7 @@ def create_menu():
                             width=True,
                             className="d-flex align-items-center"
                         ),
-                        # Hamburger Button (Visible Always)
+                        # Hamburger Button
                         dbc.Col(
                             dbc.NavbarToggler(id="navbar-toggler", n_clicks=0),
                             width="auto",
@@ -33,7 +33,7 @@ def create_menu():
                     className="w-100 g-0 flex-nowrap"
                 ),
 
-                # COLLAPSIBLE MENU
+                # Collapse menu
                 dbc.Collapse(
                     dbc.Nav(
                         [
@@ -60,7 +60,6 @@ def create_menu():
             fluid=True
         ),
         class_name="custom-navbar",
-        # CRITICAL CHANGE: expand=False forces the hamburger on ALL screen sizes
         expand=False,
     )
     return navmenu

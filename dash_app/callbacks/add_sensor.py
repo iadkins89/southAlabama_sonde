@@ -44,7 +44,6 @@ def submit_onboarding_form(n_clicks, device_name, latitude, longitude, timezone,
             user_id = current_user_id
         )
 
-        # Check if the operation was successful
         if "successfully" in message.lower():
             return dbc.Alert(message, color="success"), {"timestamp": time.time()}
             # Output time of sensor-update to make sure other components triggered correctly
@@ -67,13 +66,12 @@ def show_add_sensor_preview(image_data):
     }
 
     if not image_data:
-        # Show default text
         default_content = html.Div(["Drag and Drop or ", html.A("Select an Image File")])
         return default_content, default_style
 
     # Image Style (Bigger box containing the image)
     image_style = {
-        "width": "100%", "height": "300px",  # Made taller to fit image
+        "width": "100%", "height": "300px",
         "borderWidth": "1px", "borderStyle": "solid",
         "borderRadius": "5px", "textAlign": "center", "margin": "10px",
         "display": "flex", "alignItems": "center", "justifyContent": "center",

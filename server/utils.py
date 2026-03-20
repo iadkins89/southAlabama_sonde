@@ -109,7 +109,7 @@ def get_measurement_summary(sensor_name, include_health=False):
         })
 
     response["most_recent_measurements"] = summary_list
-    response["status"] = "online"  # Could add logic here to check if timestamp is < time (e.g. 2hours)
+    response["status"] = "online"
 
     return response
 
@@ -141,7 +141,6 @@ def get_deployment_statistics(sensor_name, deploy_data):
         if not historic_data:
             return stats  # Averages list will just remain empty
 
-        # 3. Calculate sums and counts for the means
         param_totals = {}
         param_counts = {}
         param_units = {}
@@ -280,7 +279,6 @@ def create_map_markers(selected_sensor_name=None, show_inactive=False):
 
 
 def create_instructions_card():
-    # Fetch fresh data every time the page loads
     from server.models import get_all_sensors
     sensors = get_all_sensors()
 
@@ -288,7 +286,7 @@ def create_instructions_card():
     active_sensors = [s for s in sensors if s.get('active', False)]
     deactivated_sensors = [s for s in sensors if not s.get('active', False)]
 
-    # Helper function to create a stylish "Title + Subtitle" list
+    # Helper function to create a "Title + Subtitle" list
     def make_sensor_list(sensor_list):
         if not sensor_list:
             return html.Div("No sensors found.", className="text-muted small p-2")
@@ -317,8 +315,6 @@ def create_instructions_card():
                             html.I(className=dot_class, style={"fontSize": "0.6rem"}),
                             className="me-3 d-flex align-items-center"
                         ),
-
-                        # COLUMN 2: The Text Stack (Name + Type) - Reverted to your original style!
                         html.Div(
                             [
                                 html.Span(name, className="fw-bold text-dark me-2",

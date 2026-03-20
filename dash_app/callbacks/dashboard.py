@@ -108,7 +108,7 @@ def update_multi_sensor_graph(radio, slider, sensor_name, deploy_data, live_data
             mode="lines",
             name="History",
             line={"color": "#1f77b4", "width": 2, "shape": "spline", "smoothing": 0.3},
-            fill='tozeroy',  # Uncomment for "Area Chart" style
+            fill='tozeroy',  # Area chart style
             fillcolor='rgba(0, 123, 255, 0.1)',
             # %{y:.2f} = value with 2 decimals
             # <extra></extra> = removes the side box (name/icon)
@@ -121,14 +121,14 @@ def update_multi_sensor_graph(radio, slider, sensor_name, deploy_data, live_data
             trace_data.append(go.Scatter(
                 x=[last_time], y=[last_val], mode="markers",
                 marker={"color": "rgba(220, 53, 69, 0.3)", "size": 25, "line": {"width": 0}},
-                hoverinfo="skip"  # Never show tooltip for the glow
+                hoverinfo="skip"
             ))
             # Red Dot
             trace_data.append(go.Scatter(
                 x=[last_time], y=[last_val],
                 mode="markers+text",
                 marker={"color": "#dc3545", "size": 12, "line": {"width": 2, "color": "white"}},
-                hoverinfo="skip",  # Skip this too! The Line tooltip already covers this point.
+                hoverinfo="skip",  # The Line tooltip already covers this point.
                 text=["Live"],
                 textposition="middle right",
                 textfont=dict(
@@ -156,7 +156,7 @@ def update_multi_sensor_graph(radio, slider, sensor_name, deploy_data, live_data
                     margin={"l": 60, "r": 40, "t": 40, "b": 80},
                     height=300,
                     showlegend=False,
-                    hovermode="x unified"  # Professional vertical line hover
+                    hovermode="x unified"  # vertical line hover
                 )
             },
             config={
@@ -257,7 +257,7 @@ def update_sensor_health(sensor_name, live_data):
     # Handle missing data
     if battery is None:
         battery_label = "No battery data available"
-        battery_color = "secondary"  # You can use a different color like gray for unavailable data
+        battery_color = "secondary"
     else:
         if battery >= 3.7:
             battery_color = "success"
@@ -369,7 +369,7 @@ def update_summary_from_url(sensor_name, live_data, deploy_data):
                 formatted_unit = f"({avg['unit']})" if avg.get('unit') else ""
                 display_name = f"Avg {avg['parameter'].replace('_', ' ').title()} {formatted_unit}"
 
-                # Matches the Live View format exactly
+                # Matches the Live View format exactly could refactor this later
                 stat_rows.append(
                     dbc.Row(
                         [
@@ -466,7 +466,7 @@ def update_summary_from_url(sensor_name, live_data, deploy_data):
             )
             for measurement in recent_measurements
         ],
-        style={"list-style-type": "none", "padding": "0", "margin": "0"}  # Remove bullet points and extra spacing
+        style={"list-style-type": "none", "padding": "0", "margin": "0"}
     )
 
     # Combine the timestamp and parameters
@@ -503,7 +503,7 @@ def update_summary_from_url(sensor_name, live_data, deploy_data):
      Output("historic-date-slider", "max"),
      Output("historic-date-slider", "marks"),
      Output("historic-date-slider", "value"),
-     Output("historic-date-slider", "tooltip")],  # <--- Add this Output
+     Output("historic-date-slider", "tooltip")],
     Input("selected-deployment-store", "data")
 )
 def toggle_controls(deploy_data):
@@ -533,7 +533,6 @@ def toggle_controls(deploy_data):
      Input("historic-date-slider", "drag_value")]
 )
 def update_slider_label(value, drag_value):
-    # Prefer drag_value for instant feedback
     current = drag_value if drag_value else value
 
     if not current or len(current) < 2: return "Loading..."

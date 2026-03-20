@@ -17,7 +17,7 @@
 /* =========================================
    FIX DATE PICKER SIZING
    ========================================= */
-/* 1. Shrink the font size of the date input text */
+/* Shrink the font size of the date input text */
 .DateInput_input {
     font-size: 0.9rem !important;
     line-height: 1.5 !important;
@@ -25,12 +25,12 @@
     padding: 0.25rem 0.5rem !important;
 }
 
-/* 2. Adjust the width of the input boxes so they fit in the offcanvas */
+/* Adjust the width of the input boxes so they fit in the offcanvas */
 .DateInput {
     width: 90px !important;
 }
 
-/* 3. (Optional) Fix the calendar popup z-index so it doesn't get hidden */
+/* Fix the calendar popup z-index so it doesn't get hidden */
 .CalendarMonthGrid {
     background-color: #fff;
 }

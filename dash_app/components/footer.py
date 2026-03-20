@@ -31,7 +31,7 @@ def create_footer():
                                 target="_blank",
                                 children=[
                                     html.Img(
-                                        src="/assets/github-icon.png",  # Place the image in the "assets" folder
+                                        src="/assets/github-icon.png",
                                         alt="GitHub",
                                         className="github-icon",
                                     )

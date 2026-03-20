@@ -4,7 +4,7 @@ window.dash_clientside.clientside = window.dash_clientside.clientside || {};
 
 // Add the update_store function
 window.dash_clientside.clientside.update_store = function(msg) {
-    // This logic allows you to trigger a callback from the hidden div update
+    // trigger a callback from the hidden div update
     return msg || window.dash_clientside.no_update;
 };
 

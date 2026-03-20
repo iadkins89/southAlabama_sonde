@@ -48,7 +48,7 @@ def populate_sensors_dropdown(pathname, update_signal):
         dropdown_items.append(
             html.H6(
                 device_type.replace("_", " ").capitalize(),
-                style={"fontWeight": "bold", "padding": "5px 10px"}  # Add bold styling and padding
+                style={"fontWeight": "bold", "padding": "5px 10px"}
             )
         )
 
