@@ -17,9 +17,11 @@ from flask import session
         State("timezone", "value"),
         State("device-type", "value"),
         State("device-image", "contents"),
+        State("gauge-elevation", "value"),
     ],
 )
-def submit_onboarding_form(n_clicks, device_name, latitude, longitude, timezone, device_type, image_data):
+def submit_onboarding_form(n_clicks, device_name, latitude, longitude, timezone, device_type, image_data,
+                           gauge_elevation):
     if n_clicks:
         # Validate required fields
         if not all([device_name, latitude, longitude, device_type]):
@@ -41,7 +43,8 @@ def submit_onboarding_form(n_clicks, device_name, latitude, longitude, timezone,
             image_data=image_data,
             timezone=timezone,
             active=True,
-            user_id = current_user_id
+            user_id = current_user_id,
+            navd88_elevation=gauge_elevation if device_type == "tide_gauge" else None
         )
 
         if "successfully" in message.lower():
@@ -51,6 +54,15 @@ def submit_onboarding_form(n_clicks, device_name, latitude, longitude, timezone,
             return dbc.Alert(message, color="danger"), no_update
 
     return "", no_update
+
+@callback(
+    Output("gauge-elevation-row", "style"),
+    Input("device-type", "value")
+)
+def toggle_gauge_elevation_field(device_type):
+    if device_type == "tide_gauge":
+        return {"display": "block"}
+    return {"display": "none"}
 
 @callback(
     [Output("device-image", "children"),

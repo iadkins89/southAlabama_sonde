@@ -62,6 +62,7 @@ class Sensor(db.Model):
     device_type = db.Column(db.String(50))  # 'sonde', 'tide_gauge', etc.
     latitude = db.Column(db.Float)
     longitude = db.Column(db.Float)
+    navd88_elevation = db.Column(db.Float, nullable=True)  # Tide gauges: gauge height in NAVD88
     image_data = db.Column(db.Text, nullable=True)
     timezone = db.Column(db.String(50), default='America/Chicago', nullable=False)
     active = db.Column(db.Boolean, default=True)
@@ -287,7 +288,8 @@ def create_or_update_sensor(name,
                             timezone='America/Chicago',
                             active = True,
                             user_id = None,
-                            sensor_id=None):
+                            sensor_id=None,
+                            navd88_elevation=None):
     try:
         now = datetime.utcnow()
         action = None
@@ -301,6 +303,15 @@ def create_or_update_sensor(name,
 
         if not (-90 <= lat_float <= 90) or not (-180 <= lon_float <= 180):
             return "Error: Coordinates out of range (Lat: -90 to 90, Lon: -180 to 180)"
+
+        # NAVD88 elevation is optional (only meaningful for tide gauges)
+        if navd88_elevation is not None and navd88_elevation != "":
+            try:
+                navd88_elevation = float(navd88_elevation)
+            except (ValueError, TypeError):
+                return "Error: NAVD88 Elevation must be a number."
+        else:
+            navd88_elevation = None
 
         sensor = None
         if sensor_id:
@@ -378,6 +389,7 @@ def create_or_update_sensor(name,
         sensor.device_type = device_type
         sensor.timezone = timezone
         sensor.active = active
+        sensor.navd88_elevation = navd88_elevation
 
         if image_data:
             sensor.image_data = compress_image(image_data)

@@ -22,10 +22,20 @@ def show_form_on_device_select(selected_device):
     return {"display": "none"}  # Hide the form if no device is selected
 
 @callback(
+    Output("update-gauge-elevation-row", "style"),
+    Input("update-device-type", "value")
+)
+def toggle_update_gauge_elevation_field(device_type):
+    if device_type == "tide_gauge":
+        return {"display": "block"}
+    return {"display": "none"}
+
+@callback(
     [Output("update-device-name", "value"),
      Output("update-latitude", "value"),
      Output("update-longitude", "value"),
      Output("update-device-type", "value"),
+     Output("update-gauge-elevation", "value"),
      Output("sensor-active-status-store", "data"),  # Store the status
      Output("toggle-active-btn", "children"),  # Change button text
      Output("toggle-active-btn", "color")],
@@ -39,8 +49,9 @@ def populate_form_with_device_info(selected_device):
         btn_text = "Deactivate" if sensor.active else "Reactivate"
         btn_color = "danger" if sensor.active else "success"
 
-        return sensor.name, sensor.latitude, sensor.longitude, sensor.device_type, sensor.active, btn_text, btn_color
-    return "", "", "", "", "", "", ""
+        return (sensor.name, sensor.latitude, sensor.longitude, sensor.device_type, sensor.navd88_elevation,
+                sensor.active, btn_text, btn_color)
+    return "", "", "", "", "", "", "", ""
 
 @callback(
     Output("update-submission-response", "children"),
@@ -52,10 +63,11 @@ def populate_form_with_device_info(selected_device):
      State("update-longitude", "value"),
      State("update-device-type", "value"),
      State("update-device-image", "contents"),
+     State("update-gauge-elevation", "value"),
      State("sensor-active-status-store", "data")]
 )
 def update_sensor_information(submit_clicks, deactivate_clicks, original_name, new_name, lat, lon, dtype,
-                              image_data, is_active):
+                              image_data, gauge_elevation, is_active):
     # Determine which button was clicked
     ctx = callback_context
     if not ctx.triggered: return ""
@@ -82,7 +94,8 @@ def update_sensor_information(submit_clicks, deactivate_clicks, original_name, n
             device_type=sensor_to_update.device_type,
             image_data=None,
             active=new_status,
-            sensor_id=target_id
+            sensor_id=target_id,
+            navd88_elevation=sensor_to_update.navd88_elevation
         )
 
         status_word = "Activated" if new_status else "Deactivated"
@@ -99,7 +112,8 @@ def update_sensor_information(submit_clicks, deactivate_clicks, original_name, n
             dtype,
             image_data,
             active=is_active,
-            sensor_id=target_id
+            sensor_id=target_id,
+            navd88_elevation=gauge_elevation if dtype == "tide_gauge" else None
         )
         return dbc.Alert(msg, color="success")
 

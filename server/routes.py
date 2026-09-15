@@ -61,6 +61,18 @@ def setup_routes(server):
 
         #Data prep. Handle lat and long (not reported by LoRaWAN sensors)
         measurements = payload['measurements']
+
+        #Tide gauges report a raw water_level reading (distance to water surface).
+        #Convert it in place to a NAVD88-referenced elevation: gauge elevation - reading.
+        if sensor.device_type == "tide_gauge" and measurements.get('water_level') is not None:
+            if sensor.navd88_elevation is not None:
+                try:
+                    measurements['water_level'] = sensor.navd88_elevation - float(measurements['water_level'])
+                except (TypeError, ValueError):
+                    print(f"Invalid water_level reading from '{sensor_name}': {measurements['water_level']!r}")
+            else:
+                print(f"Warning: Tide gauge '{sensor_name}' has no NAVD88 elevation set; storing raw water_level reading.")
+
         timestamp = measurements.get('timestamp')
         lat = payload.get('lat') #handle missing data gracefully
         lon = payload.get('lon')

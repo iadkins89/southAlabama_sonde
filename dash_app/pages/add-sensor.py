@@ -61,6 +61,18 @@ def layout():
                     ), width=12, md=10
                 ),
             ], className="mb-3"),
+            html.Div(
+                dbc.Row([
+                    dbc.Col(dbc.Label("NAVD88 Elevation (m)", className="text-start text-md-end"), width=12, md=2),
+                    dbc.Col(
+                        dbc.Input(type="number", id="gauge-elevation",
+                                  placeholder="Enter gauge elevation in NAVD88"),
+                        width=12, md=10
+                    ),
+                ], className="mb-3"),
+                id="gauge-elevation-row",
+                style={"display": "none"}
+            ),
             dbc.Row([
                 dbc.Col(dbc.Label("Device Image", className="text-start text-md-end"), width=12, md=2),
                 dbc.Col([
