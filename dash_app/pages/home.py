@@ -1,7 +1,7 @@
 import dash
 from dash import html
 import dash_leaflet as dl
-from server.utils import create_instructions_card,create_map_markers
+from server.utils import create_instructions_card, create_map_markers, get_carto_tile_url
 
 dash.register_page(__name__, path='/')
 
@@ -14,7 +14,7 @@ def layout():
         [
             dl.Map(
                 [
-                    dl.TileLayer(url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"),
+                    dl.TileLayer(url=get_carto_tile_url()),
                     dl.LayerGroup(children=markers, id="map-markers")
                 ],
                 center=map_center,

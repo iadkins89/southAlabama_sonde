@@ -9,6 +9,9 @@ def create_server():
 
     server = Flask(__name__)
     server.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get("DATABASE_URL")
+    #server.config['SQLALCHEMY_DATABASE_URI'] = "postgresql://postgres:testpass@localhost:5433/testdb"
+
+
     server.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
     # Add session configuration

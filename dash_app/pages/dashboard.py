@@ -3,7 +3,7 @@ import dash_bootstrap_components as dbc
 from datetime import datetime
 import pytz
 import dash_leaflet as dl
-from server.utils import create_map_markers
+from server.utils import create_map_markers, get_carto_tile_url
 
 register_page(
     __name__,
@@ -29,8 +29,7 @@ def layout(sensor=None, **other_unknown_query_strings):
                 dbc.Card(
                     dl.Map(
                         [
-                            dl.TileLayer(
-                                url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"),
+                            dl.TileLayer(url=get_carto_tile_url()),
                             dl.LayerGroup(children=markers, id="map-markers")
                         ],
                         id="dashboard-map",

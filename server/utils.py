@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import io
 import base64
@@ -7,6 +8,17 @@ import dash_bootstrap_components as dbc
 from dash import html
 import dash_leaflet as dl
 from dateutil.parser import parse as parse_date
+
+CARTO_API_KEY = os.environ.get("CARTO_API_KEY")
+
+
+def get_carto_tile_url():
+    """
+    Returns the CARTO Voyager raster tile URL, appending the API key
+    (required as of CARTO's raster basemap changes) when one is configured.
+    """
+    base_url = "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+    return f"{base_url}?key={CARTO_API_KEY}" if CARTO_API_KEY else base_url
 
 # from server.models import get_sensor_timezone, get_sensor_by_name, get_most_recent, get_all_sensors
 # TO DO: Refactor so function's here are "pure" and do not rely on DB import. This will avoid inline
