@@ -12,6 +12,26 @@ from server.models import (get_data,
 import pytz
 from dateutil.parser import parse as parse_date
 import dash_leaflet as dl
+from server.qc import SUSPECT
+
+# Longer than this between water levels draws as a break in the line, not a bridge.
+GAUGE_GAP = timedelta(minutes=15)
+
+
+def display_decimals(parameter):
+    # Tides here are a few tenths of a metre, which 1 decimal would flatten.
+    return 3 if parameter.startswith("water_level") else 1
+
+
+def break_line_at_gaps(timestamps, values, max_gap):
+    x, y = [], []
+    for i, (timestamp, value) in enumerate(zip(timestamps, values)):
+        if i > 0 and timestamp - timestamps[i - 1] > max_gap:
+            x.append(timestamp)
+            y.append(None)
+        x.append(timestamp)
+        y.append(value)
+    return x, y
 
 
 # ----------------------------
@@ -71,18 +91,21 @@ def update_multi_sensor_graph(radio, slider, sensor_name, deploy_data, live_data
         if parameter_name not in parameter_data:
             if parameter_name == "longitude" or parameter_name == "latitude":
                 continue
-            parameter_data[parameter_name] = {"timestamps": [], "values": []}
+            parameter_data[parameter_name] = {"timestamps": [], "values": [], "flags": []}
             parameter_units[parameter_name] = unit
         parameter_data[parameter_name]["timestamps"].append(local_ts)
         parameter_data[parameter_name]["values"].append(value)
+        parameter_data[parameter_name]["flags"].append(row.qc_flag)
 
     # Sort data by timestamps for each parameter
     for parameter, values in parameter_data.items():
         sorted_data = sorted(
-            zip(values["timestamps"], values["values"]),
+            zip(values["timestamps"], values["values"], values["flags"]),
             key=lambda x: x[0]
         )
-        parameter_data[parameter]["timestamps"], parameter_data[parameter]["values"] = zip(*sorted_data)
+        (parameter_data[parameter]["timestamps"],
+         parameter_data[parameter]["values"],
+         parameter_data[parameter]["flags"]) = zip(*sorted_data)
 
     # Generate graphs dynamically
     graphs = []
@@ -102,18 +125,41 @@ def update_multi_sensor_graph(radio, slider, sensor_name, deploy_data, live_data
 
         trace_data = []
 
+        is_water_level = parameter == "water_level"
+        hover_format = ".3f" if is_water_level else ".2f"
+
+        if is_water_level:
+            line_x, line_y = break_line_at_gaps(values["timestamps"], values["values"], GAUGE_GAP)
+            # NAVD88 levels can cross zero, so filling down to zero would mislead.
+            area_style = {}
+        else:
+            line_x, line_y = values["timestamps"], values["values"]
+            area_style = {"fill": "tozeroy", "fillcolor": "rgba(0, 123, 255, 0.1)"}  # Area chart style
+
         trace_data.append(go.Scatter(
-            x=values["timestamps"],
-            y=values["values"],
+            x=line_x,
+            y=line_y,
             mode="lines",
             name="History",
             line={"color": "#1f77b4", "width": 2, "shape": "spline", "smoothing": 0.3},
-            fill='tozeroy',  # Area chart style
-            fillcolor='rgba(0, 123, 255, 0.1)',
-            # %{y:.2f} = value with 2 decimals
             # <extra></extra> = removes the side box (name/icon)
-            hovertemplate=f'%{{y:.2f}} {unit}<extra></extra>'
+            hovertemplate=f'%{{y:{hover_format}}} {unit}<extra></extra>',
+            **area_style
         ))
+
+        suspect_points = [(t, v) for t, v, flag in zip(values["timestamps"], values["values"], values["flags"])
+                          if flag == SUSPECT]
+        if suspect_points:
+            suspect_x, suspect_y = zip(*suspect_points)
+            trace_data.append(go.Scatter(
+                x=suspect_x,
+                y=suspect_y,
+                mode="markers",
+                name="Suspect",
+                marker={"color": "#fd7e14", "size": 8, "symbol": "diamond",
+                        "line": {"width": 1, "color": "white"}},
+                hovertemplate=f'%{{y:{hover_format}}} {unit} (suspect)<extra></extra>'
+            ))
 
         # Live Indicators (Only if active)
         if is_active:
@@ -206,7 +252,8 @@ def file_download(n_clicks, sensor_name, start_date, end_date, filename, data_ty
             return True, 'Please provide a valid filename.', None
 
         if data_type == "   Sensor Data":
-            data = get_data(sensor_name, start_date, end_date, lora=False, localize_input=True)
+            data = get_data(sensor_name, start_date, end_date, lora=False, localize_input=True,
+                            include_failed=True)
         else:
             data = get_data(sensor_name, start_date, end_date, lora=True, localize_input=True)
 
@@ -239,7 +286,9 @@ def toggle_sensor_health_offcanvas(n_clicks, is_open):
      Output("rssi-progress", "color"),
      Output("snr-progress", "value"),
      Output("snr-progress", "label"),
-     Output("snr-progress", "color")],
+     Output("snr-progress", "color"),
+     Output("board-temp-value", "children"),
+     Output("board-temp-container", "style")],
     [Input("sensor-name-store", "data"),
      Input("live-sensor-data", "data")]
 )
@@ -253,6 +302,7 @@ def update_sensor_health(sensor_name, live_data):
     battery = readings.get('battery')
     rssi = readings.get('rssi')
     snr = readings.get('snr')
+    board_temperature = readings.get('board_temperature')
 
     # Handle missing data
     if battery is None:
@@ -293,11 +343,20 @@ def update_sensor_health(sensor_name, live_data):
             snr_color = "danger"  # Poor
         snr_label = f"{snr} dB"
 
+    # Not every device reports this, so the row only appears when there is a value
+    if board_temperature is None:
+        board_temp_label = ""
+        board_temp_style = {"display": "none"}
+    else:
+        board_temp_label = f"{board_temperature:.1f} \u00B0C"
+        board_temp_style = {"display": "block"}
+
     # Return updated values, labels, and colors
     return (
         battery if battery is not None else 0, battery_label, battery_color,
         rssi_transformed if rssi is not None else 0, rssi_label, rssi_color,
         snr_transformed if snr is not None else 0, snr_label, snr_color,
+        board_temp_label, board_temp_style,
     )
 
 # ----------------------------
@@ -374,7 +433,7 @@ def update_summary_from_url(sensor_name, live_data, deploy_data):
                     dbc.Row(
                         [
                             dbc.Col(html.Div(display_name, style={'text-align': 'left', 'font-size': '14px'}), width=9),
-                            dbc.Col(html.Div(f"{round(avg['value'], 1)}",
+                            dbc.Col(html.Div(f"{round(avg['value'], display_decimals(avg['parameter']))}",
                                              style={'text-align': 'right', 'font-size': '14px'}), width=3),
                         ]
                     )
@@ -461,7 +520,7 @@ def update_summary_from_url(sensor_name, live_data, deploy_data):
             dbc.Row(
                 [
                     dbc.Col(html.Div(measurement['parameter'].replace("_", " "), style={'text-align': 'left', 'font-size': '14px'}), width=9),
-                    dbc.Col(html.Div(f"{round(measurement['value'], 1)}", style={'text-align': 'right', 'font-size': '14px'}), width=3),
+                    dbc.Col(html.Div(f"{round(measurement['value'], display_decimals(measurement['parameter']))}", style={'text-align': 'right', 'font-size': '14px'}), width=3),
                 ]
             )
             for measurement in recent_measurements

@@ -152,6 +152,10 @@ def layout(sensor=None, **other_unknown_query_strings):
                                 dbc.Progress(id="rssi-progress", value=50, color="warning", className="progress-bar"),
                                 html.H5("SNR", className="snr-label"),
                                 dbc.Progress(id="snr-progress", value=30, color="danger", className="progress-bar"),
+                                html.Div([
+                                    html.H5("Board Temperature", className="snr-label"),
+                                    html.P(id="board-temp-value"),
+                                ], id="board-temp-container", style={"display": "none"}),
                             ]),
                             id="sensor-health-offcanvas",
                             title="Sensor Health",

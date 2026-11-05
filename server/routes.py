@@ -1,35 +1,13 @@
 from flask import request, jsonify
-from .models import (Parameter,
-                     SensorData,
+from .models import (SensorData,
                      get_sensor_by_name,
                      HEALTH_PARAMS,
-                     get_param_by_name)
+                     get_or_create_parameter)
 from .database import db
 from .realtime import emit_event
+from .tide_gauge import begin_reading, finish_reading
 from server.parser import parse_lora_message, parse_iridium_message
 
-
-# Helper function to guess unit
-def guess_unit(param_name):
-    param = param_name.lower()
-    PARAMETER_UNITS = {
-        "temperature": "°C",
-        "pressure": "Pa",
-        "humidity": "%",
-        "velocity": "m/s",
-        "acceleration": "m/s\u00B2",
-        "water_level": "m",
-        "wave_height": "m",
-        "depth": "m",
-        "dissolved_oxygen": "mg/L",
-        "conductivity": "µS/cm",
-        "turbidity": "NTU",
-        "ph": "",
-        "rssi": "dBm",
-        "snr": "dB",
-        "battery": "V",
-    }
-    return PARAMETER_UNITS.get(param, "")
 
 def setup_routes(server):
     @server.route('/receive_data', methods=['POST'])
@@ -62,16 +40,16 @@ def setup_routes(server):
         #Data prep. Handle lat and long (not reported by LoRaWAN sensors)
         measurements = payload['measurements']
 
-        #Tide gauges report a raw water_level reading (distance to water surface).
-        #Convert it in place to a NAVD88-referenced elevation: gauge elevation - reading.
-        if sensor.device_type == "tide_gauge" and measurements.get('water_level') is not None:
-            if sensor.navd88_elevation is not None:
-                try:
-                    measurements['water_level'] = sensor.navd88_elevation - float(measurements['water_level'])
-                except (TypeError, ValueError):
-                    print(f"Invalid water_level reading from '{sensor_name}': {measurements['water_level']!r}")
-            else:
-                print(f"Warning: Tide gauge '{sensor_name}' has no NAVD88 elevation set; storing raw water_level reading.")
+        #Tide gauges: keep the raw packet, then pass on only what should be stored as data
+        gauge = None
+        if sensor.device_type == "tide_gauge":
+            gauge = begin_reading(sensor, payload)
+            if gauge is None:
+                return jsonify({'error': 'Invalid tide gauge payload'}), 400
+            if gauge.stop_reason:
+                db.session.commit()
+                return jsonify({'message': gauge.stop_reason}), 200
+            measurements = gauge.measurements
 
         timestamp = measurements.get('timestamp')
         lat = payload.get('lat') #handle missing data gracefully
@@ -98,11 +76,7 @@ def setup_routes(server):
                 continue
 
             #Find the parameter or create it if it is new
-            parameter = get_param_by_name(param_name)
-            if not parameter:
-                parameter = Parameter(name=param_name, canonical_unit=guess_unit(param_name))
-                db.session.add(parameter)
-                db.session.commit()
+            parameter = get_or_create_parameter(param_name)
 
             #Create new SensorData entry
             new_entry = SensorData(
@@ -113,6 +87,10 @@ def setup_routes(server):
             )
             db.session.add(new_entry)
 
+            if gauge and param_name == 'water_level':
+                new_entry.qc_flag = gauge.flag
+                gauge.water_level_entry = new_entry
+
             new_data.append({
                 'name': param_name,
                 'value': param_value,
@@ -120,6 +98,10 @@ def setup_routes(server):
             })
 
         try:
+            if gauge:
+                db.session.flush()
+                finish_reading(gauge)
+
             db.session.commit()
 
             #Real time data
@@ -135,4 +117,3 @@ def setup_routes(server):
             db.session.rollback()
             print(f"Database insert error: {e}")
             return jsonify({"error": str(e)}), 500
-

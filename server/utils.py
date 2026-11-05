@@ -25,16 +25,22 @@ def get_carto_tile_url():
 # imports and circular imports
 
 def save_data_to_csv(data, sensor_name):
-    from server.models import get_sensor_timezone
+    from server.models import get_sensor_by_name, get_sensor_timezone, get_locations_for_range
     organized_data = defaultdict(dict)
 
     timezone_str = get_sensor_timezone(sensor_name)
 
-    for timestamp, value, parameter, unit in data:
-        organized_data[timestamp][f"{parameter} {f'({unit})' if unit else ''}"] = value
+    for row in data:
+        organized_data[row.timestamp][f"{row.name} {f'({row.unit})' if row.unit else ''}"] = row.value
+        if row.qc_flag is not None:
+            organized_data[row.timestamp][f"{row.name} QARTOD flag"] = row.qc_flag
 
     # Create a DataFrame from the organized data
     df = pd.DataFrame.from_dict(organized_data, orient='index').reset_index()
+
+    # Timestamps are stored in UTC. Show them in the sensor's own timezone.
+    df['index'] = (pd.to_datetime(df['index'], utc=True).dt.tz_convert(timezone_str)
+                   .dt.strftime('%Y-%m-%d %H:%M:%S'))
 
     # Rename the first column to 'timestamp (timezone)'
     formatted_time = f"timestamp ({timezone_str})"
@@ -42,10 +48,24 @@ def save_data_to_csv(data, sensor_name):
 
     # Convert the DataFrame to a CSV string
     csv_data = df.to_csv(index=False)
-    sensor_name_line = f"Sensor Name: {sensor_name}\n"
-    csv_data = sensor_name_line + csv_data
+    header = f"Sensor Name: {sensor_name}\n"
 
-    return csv_data
+    # Use where the sensor was during this data, which may not be where it is now
+    sensor = get_sensor_by_name(sensor_name)
+    times = [row.timestamp for row in data]
+    locations = get_locations_for_range(sensor, min(times), max(times))
+
+    if len(locations) > 1:
+        for number, loc in enumerate(locations, start=1):
+            end = loc.removed_at.strftime('%Y-%m-%d') if loc.removed_at else 'present'
+            header += (f"Location {number}: {loc.latitude}, {loc.longitude} "
+                       f"({loc.deployed_at.strftime('%Y-%m-%d')} to {end})\n")
+    else:
+        latitude = locations[0].latitude if locations else sensor.latitude
+        longitude = locations[0].longitude if locations else sensor.longitude
+        header += f"Latitude: {latitude}\nLongitude: {longitude}\n"
+
+    return header + csv_data
 
 def compress_image(base64_string, max_size=(800, 800), quality=70):
     """

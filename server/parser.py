@@ -19,13 +19,17 @@ def parse_lora_message(sensor_data):
         payload['snr'] = snr
 
         # Convert timestamp to Central Time
-        unix_timestamp = payload.get("timestamp")
-        utc_time = datetime.utcfromtimestamp(unix_timestamp)
-        payload['timestamp'] = utc_time
+        # Compact tide gauge packets carry no time, so ingest rebuilds it from arrival.
+        if payload.get("time_source") == "server":
+            payload['timestamp'] = None
+        else:
+            unix_timestamp = payload.get("timestamp")
+            payload['timestamp'] = datetime.utcfromtimestamp(unix_timestamp)
 
         return{
             "sensor_name": sensor_name,
             "measurements": payload,
+            "fcnt": sensor_data.get("fCnt"),
             "lat": None,
             "lon": None
         }
