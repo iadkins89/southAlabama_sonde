@@ -300,6 +300,8 @@ def create_map_markers(selected_sensor_name=None, show_inactive=False):
 
         markers.append(
             dl.Marker(
+                # A new id per selected sensor closes any popup left open by the last one
+                id={"type": "sensor-marker", "selected": selected_sensor_name or "", "name": name},
                 position=[lat, lon],
                 title=name,
                 children=[

@@ -23,6 +23,21 @@ THIN_BLOCKS = 1000
 THIN_ABOVE = timedelta(days=31)
 
 
+# LoRa decodes signals far weaker than most radios, even below the noise floor (negative SNR).
+RSSI_GOOD_ABOVE = -100
+RSSI_POOR_BELOW = -115
+SNR_GOOD_ABOVE = -5
+SNR_POOR_BELOW = -15
+
+
+def signal_color(value, good_above, poor_below):
+    if value > good_above:
+        return "success"
+    if value >= poor_below:
+        return "warning"
+    return "danger"
+
+
 def display_decimals(parameter):
     # Tides here are a few tenths of a metre, which 1 decimal would flatten.
     return 3 if parameter.startswith("water_level") else 1
@@ -410,12 +425,7 @@ def update_sensor_health(sensor_name, live_data):
         rssi_color = "secondary"
     else:
         rssi_transformed = max(0, min(100, int((rssi + 120) * 100 / 120)))  # Map -120 to 0 dBm -> 0 to 100
-        if rssi >= -50:
-            rssi_color = "success"  # Good
-        elif -80 <= rssi < -50:
-            rssi_color = "warning"  # Moderate
-        else:
-            rssi_color = "danger"  # Poor
+        rssi_color = signal_color(rssi, RSSI_GOOD_ABOVE, RSSI_POOR_BELOW)
         rssi_label = f"{rssi} dBm"
 
     if snr is None:
@@ -423,12 +433,7 @@ def update_sensor_health(sensor_name, live_data):
         snr_color = "secondary"
     else:
         snr_transformed = max(0, min(100, int((snr + 20) * 100 / 40)))  # Map -20 to 20 dB -> 0 to 100
-        if snr > 10:
-            snr_color = "success"  # Good
-        elif 0 <= snr <= 10:
-            snr_color = "warning"  # Moderate
-        else:
-            snr_color = "danger"  # Poor
+        snr_color = signal_color(snr, SNR_GOOD_ABOVE, SNR_POOR_BELOW)
         snr_label = f"{snr} dB"
 
     # Not every device reports this, so the row only appears when there is a value
