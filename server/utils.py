@@ -9,6 +9,8 @@ from dash import html
 import dash_leaflet as dl
 from dateutil.parser import parse as parse_date
 
+BATTERY_MIN_V = 3.4  # Where the health panel's battery bar starts
+
 CARTO_API_KEY = os.environ.get("CARTO_API_KEY")
 
 

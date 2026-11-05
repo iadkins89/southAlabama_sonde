@@ -1,5 +1,6 @@
 from server import db
 from sqlalchemy import Index, func, or_, text
+from sqlalchemy.orm import defer
 from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime, timedelta
 import pytz
@@ -275,7 +276,7 @@ def get_all_sensors():
     """Returns a list of all sensors as dictionaries.
        Doesn't use is_online for efficiency.
     """
-    sensors = db.session.query(Sensor).all()
+    sensors = db.session.query(Sensor).options(defer(Sensor.image_data)).all()
 
     #Get the latest timestamp for ALL sensors in ONE query
     latest_data = db.session.query(
@@ -300,7 +301,6 @@ def get_all_sensors():
             "latitude": s.latitude,
             "longitude": s.longitude,
             "device_type": s.device_type,
-            "image_data": s.image_data,
             "active": s.active,
             "is_online": is_online
         })

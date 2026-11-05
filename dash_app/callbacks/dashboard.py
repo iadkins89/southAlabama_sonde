@@ -1,9 +1,9 @@
-from dash import callback, Input, Output, State, html, dcc, ALL, ctx, no_update
+from dash import callback, Input, Output, State, html, dcc, ALL, MATCH, ctx, no_update
 from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
 from datetime import datetime, timedelta
-from server.utils import save_data_to_csv, get_measurement_summary,create_map_markers, get_deployment_statistics
+from server.utils import BATTERY_MIN_V, save_data_to_csv, get_measurement_summary,create_map_markers, get_deployment_statistics
 from server.models import (get_data,
                            get_sensor_timezone,
                            get_sensor_by_name,
@@ -16,6 +16,11 @@ from server.qc import SUSPECT
 
 # Longer than this between water levels draws as a break in the line, not a bridge.
 GAUGE_GAP = timedelta(minutes=15)
+
+# The 1 year view sends each block's low and high instead of every reading, until
+# a zoom brings the span down to this length.
+THIN_BLOCKS = 1000
+THIN_ABOVE = timedelta(days=31)
 
 
 def display_decimals(parameter):
@@ -34,9 +39,193 @@ def break_line_at_gaps(timestamps, values, max_gap):
     return x, y
 
 
+def thin_stretch(timestamps, values, first, last, origin, block_width):
+    """The positions of one unbroken stretch that are worth keeping, in time order."""
+    lows, highs = {}, {}
+    for i in range(first, last + 1):
+        block = int((timestamps[i] - origin) / block_width)
+        if block not in lows or values[i] < values[lows[block]]:
+            lows[block] = i
+        if block not in highs or values[i] > values[highs[block]]:
+            highs[block] = i
+    return sorted({first, last, *lows.values(), *highs.values()})
+
+
+def thin_line(timestamps, values, max_gap=None, blocks=THIN_BLOCKS):
+    """
+    Reduces a line to each time block's low and high, so peaks survive. Gaps are
+    found first, because the kept points are far apart even with no gap.
+    """
+    origin = timestamps[0]
+    block_width = (timestamps[-1] - origin) / blocks
+
+    x, y = [], []
+    first = 0
+    for i in range(1, len(timestamps) + 1):
+        if i < len(timestamps) and not (max_gap and timestamps[i] - timestamps[i - 1] > max_gap):
+            continue
+        if x:
+            x.append(timestamps[first])
+            y.append(None)
+        for kept in thin_stretch(timestamps, values, first, i - 1, origin, block_width):
+            x.append(timestamps[kept])
+            y.append(values[kept])
+        first = i
+    return x, y
+
+
 # ----------------------------
 # Time series graphs
 # ----------------------------
+def is_year_view(radio, deploy_data):
+    # A past deployment hides the range buttons and uses the slider instead.
+    return radio == "1-year" and not (deploy_data and not deploy_data.get('is_current', False))
+
+
+def graph_window(radio, slider, deploy_data):
+    if deploy_data and not deploy_data.get('is_current', False):
+        return datetime.fromtimestamp(slider[0]), datetime.fromtimestamp(slider[1])
+
+    end = datetime.utcnow()
+    days = {"2-days": 2, "1-week": 7, "1-month": 30, "1-year": 365}.get(radio, 2)
+    start = end - timedelta(days=days)
+
+    if deploy_data and deploy_data.get('is_current', False):
+        # Parse the actual start date of the CURRENT deployment
+        deploy_start = parse_date(deploy_data['start_iso'])
+
+        # If the calculated start date is older than the deployment, clamp it
+        if start < deploy_start:
+            start = deploy_start
+
+    return start, end
+
+
+def load_series(sensor_name, start, end, only_parameter=None, localize_input=False):
+    """Returns the graphed values per parameter, in time order and in the sensor's timezone."""
+    data = get_data(sensor_name, start, end, lora=False, localize_input=localize_input)
+
+    tz_str = get_sensor_timezone(sensor_name)
+    try:
+        target_tz = pytz.timezone(tz_str)
+    except:
+        target_tz = pytz.utc
+
+    series = {}
+    for row in data:
+        parameter = row.name
+        if parameter in ("longitude", "latitude"):
+            continue
+        if only_parameter and parameter != only_parameter:
+            continue
+        if parameter not in series:
+            series[parameter] = {"timestamps": [], "values": [], "flags": [], "unit": row.unit}
+        series[parameter]["timestamps"].append(row.timestamp.replace(tzinfo=pytz.utc).astimezone(target_tz))
+        series[parameter]["values"].append(row.value)
+        series[parameter]["flags"].append(row.qc_flag)
+
+    for values in series.values():
+        sorted_data = sorted(zip(values["timestamps"], values["values"], values["flags"]), key=lambda x: x[0])
+        values["timestamps"], values["values"], values["flags"] = zip(*sorted_data)
+
+    return series
+
+
+def build_figure(sensor_name, parameter, values, radio, thin, show_live):
+    timestamps, readings, unit = values["timestamps"], values["values"], values["unit"]
+    min_y = min(readings)
+    max_y = max(readings)
+    y_padding = (max_y - min_y) * 0.2
+
+    trace_data = []
+    is_water_level = parameter == "water_level"
+    hover_format = ".3f" if is_water_level else ".2f"
+    max_gap = GAUGE_GAP if is_water_level else None
+    thin = thin and timestamps[-1] - timestamps[0] > THIN_ABOVE
+
+    if thin:
+        line_x, line_y = thin_line(timestamps, readings, max_gap)
+    elif is_water_level:
+        line_x, line_y = break_line_at_gaps(timestamps, readings, max_gap)
+    else:
+        line_x, line_y = timestamps, readings
+
+    # NAVD88 levels can cross zero, so filling down to zero would mislead.
+    area_style = {} if is_water_level else {"fill": "tozeroy", "fillcolor": "rgba(0, 123, 255, 0.1)"}  # Area chart style
+
+    trace_data.append(go.Scatter(
+        x=line_x,
+        y=line_y,
+        mode="lines",
+        name="History",
+        # A curve through alternating lows and highs would overshoot both.
+        line={"color": "#1f77b4", "width": 1 if thin else 2,
+              **({} if thin else {"shape": "spline", "smoothing": 0.3})},
+        # <extra></extra> = removes the side box (name/icon)
+        hovertemplate=f'%{{y:{hover_format}}} {unit}<extra></extra>',
+        **area_style
+    ))
+
+    suspect_points = [(t, v) for t, v, flag in zip(timestamps, readings, values["flags"]) if flag == SUSPECT]
+    if suspect_points:
+        suspect_x, suspect_y = zip(*suspect_points)
+        trace_data.append(go.Scatter(
+            x=suspect_x,
+            y=suspect_y,
+            mode="markers",
+            name="Suspect",
+            marker={"color": "#fd7e14", "size": 8, "symbol": "diamond",
+                    "line": {"width": 1, "color": "white"}},
+            hovertemplate=f'%{{y:{hover_format}}} {unit} (suspect)<extra></extra>'
+        ))
+
+    # Live Indicators (Only if active)
+    if show_live:
+        last_time = timestamps[-1]
+        last_val = readings[-1]
+        # Halo (Glow)
+        trace_data.append(go.Scatter(
+            x=[last_time], y=[last_val], mode="markers",
+            marker={"color": "rgba(220, 53, 69, 0.3)", "size": 25, "line": {"width": 0}},
+            hoverinfo="skip"
+        ))
+        # Red Dot
+        trace_data.append(go.Scatter(
+            x=[last_time], y=[last_val],
+            mode="markers+text",
+            marker={"color": "#dc3545", "size": 12, "line": {"width": 2, "color": "white"}},
+            hoverinfo="skip",  # The Line tooltip already covers this point.
+            text=["Live"],
+            textposition="middle right",
+            textfont=dict(
+                color="#dc3545",
+                size=12,
+                family="Arial Black, sans-serif"
+            ),
+        ))
+
+    return {
+        "data": trace_data,
+        "layout": go.Layout(
+            uirevision=f"{sensor_name}-{radio}",  # Keeps a zoom until the range changes
+            template="plotly_white",
+            xaxis={
+                "tickangle": -45, "showgrid": True, "gridcolor": "#f0f0f0",
+                "linecolor": "#dcdcdc", "showline": True
+            },
+            yaxis={
+                "title": f"{parameter.replace('_', ' ').capitalize()}{f' ({unit})' if unit else ''}",
+                "range": [min_y - y_padding, max_y + y_padding],
+                "showgrid": True, "gridcolor": "#f0f0f0",
+            },
+            margin={"l": 60, "r": 40, "t": 40, "b": 80},
+            height=300,
+            showlegend=False,
+            hovermode="x unified"  # vertical line hover
+        )
+    }
+
+
 @callback(
     Output('multi-sensor-graph', 'children'),
     [
@@ -52,159 +241,24 @@ def update_multi_sensor_graph(radio, slider, sensor_name, deploy_data, live_data
     if not sensor_name:
         return html.Div("No sensor selected.")
 
-    if deploy_data and not deploy_data.get('is_current', False):
-        start = datetime.fromtimestamp(slider[0])
-        end = datetime.fromtimestamp(slider[1])
-    else:
-        end = datetime.utcnow()
-        days = {"2-days": 2, "1-week": 7, "1-month": 30, "1-year": 365}.get(radio, 2)
-        start = end - timedelta(days=days)
+    # One new reading can't be seen at this scale, and redrawing would undo a zoom.
+    year_view = is_year_view(radio, deploy_data)
+    if year_view and ctx.triggered_id == "live-sensor-data":
+        raise PreventUpdate
 
-        if deploy_data and deploy_data.get('is_current', False):
-            # Parse the actual start date of the CURRENT deployment
-            deploy_start = parse_date(deploy_data['start_iso'])
+    start, end = graph_window(radio, slider, deploy_data)
+    series = load_series(sensor_name, start, end)
 
-            # If the calculated start date is older than the deployment, clamp it
-            if start < deploy_start:
-                start = deploy_start
-
-    # Query data with units
-    data = get_data(sensor_name, start, end, lora=False)
-
-    if not data:
+    if not series:
         return html.Div(f"No data available for sensor '{sensor_name}' in the selected date range.")
 
-    # Prepare Timezone for Display
-    tz_str = get_sensor_timezone(sensor_name)
-    try:
-        target_tz = pytz.timezone(tz_str)
-    except:
-        target_tz = pytz.utc
+    is_active = get_sensor_by_name(sensor_name).is_online
 
-    # Process data
-    parameter_data = {}
-    parameter_units = {}
-
-    for row in data:
-        timestamp, value, parameter_name, unit = row.timestamp, row.value, row.name, row.unit
-        local_ts = timestamp.replace(tzinfo=pytz.utc).astimezone(target_tz)
-        if parameter_name not in parameter_data:
-            if parameter_name == "longitude" or parameter_name == "latitude":
-                continue
-            parameter_data[parameter_name] = {"timestamps": [], "values": [], "flags": []}
-            parameter_units[parameter_name] = unit
-        parameter_data[parameter_name]["timestamps"].append(local_ts)
-        parameter_data[parameter_name]["values"].append(value)
-        parameter_data[parameter_name]["flags"].append(row.qc_flag)
-
-    # Sort data by timestamps for each parameter
-    for parameter, values in parameter_data.items():
-        sorted_data = sorted(
-            zip(values["timestamps"], values["values"], values["flags"]),
-            key=lambda x: x[0]
-        )
-        (parameter_data[parameter]["timestamps"],
-         parameter_data[parameter]["values"],
-         parameter_data[parameter]["flags"]) = zip(*sorted_data)
-
-    # Generate graphs dynamically
     graphs = []
-    for parameter, values in parameter_data.items():
-        min_y = min(values["values"])
-        max_y = max(values["values"])
-        y_padding = (max_y - min_y) * 0.2
-        unit = parameter_units[parameter]
-
-        # Get the very last point for the "Live" indicator
-        last_time = values["timestamps"][-1]
-        last_val = values["values"][-1]
-
-        # Check if the last point is older than 2 hours
-        sensor = get_sensor_by_name(sensor_name)
-        is_active = sensor.is_online
-
-        trace_data = []
-
-        is_water_level = parameter == "water_level"
-        hover_format = ".3f" if is_water_level else ".2f"
-
-        if is_water_level:
-            line_x, line_y = break_line_at_gaps(values["timestamps"], values["values"], GAUGE_GAP)
-            # NAVD88 levels can cross zero, so filling down to zero would mislead.
-            area_style = {}
-        else:
-            line_x, line_y = values["timestamps"], values["values"]
-            area_style = {"fill": "tozeroy", "fillcolor": "rgba(0, 123, 255, 0.1)"}  # Area chart style
-
-        trace_data.append(go.Scatter(
-            x=line_x,
-            y=line_y,
-            mode="lines",
-            name="History",
-            line={"color": "#1f77b4", "width": 2, "shape": "spline", "smoothing": 0.3},
-            # <extra></extra> = removes the side box (name/icon)
-            hovertemplate=f'%{{y:{hover_format}}} {unit}<extra></extra>',
-            **area_style
-        ))
-
-        suspect_points = [(t, v) for t, v, flag in zip(values["timestamps"], values["values"], values["flags"])
-                          if flag == SUSPECT]
-        if suspect_points:
-            suspect_x, suspect_y = zip(*suspect_points)
-            trace_data.append(go.Scatter(
-                x=suspect_x,
-                y=suspect_y,
-                mode="markers",
-                name="Suspect",
-                marker={"color": "#fd7e14", "size": 8, "symbol": "diamond",
-                        "line": {"width": 1, "color": "white"}},
-                hovertemplate=f'%{{y:{hover_format}}} {unit} (suspect)<extra></extra>'
-            ))
-
-        # Live Indicators (Only if active)
-        if is_active:
-            # Halo (Glow)
-            trace_data.append(go.Scatter(
-                x=[last_time], y=[last_val], mode="markers",
-                marker={"color": "rgba(220, 53, 69, 0.3)", "size": 25, "line": {"width": 0}},
-                hoverinfo="skip"
-            ))
-            # Red Dot
-            trace_data.append(go.Scatter(
-                x=[last_time], y=[last_val],
-                mode="markers+text",
-                marker={"color": "#dc3545", "size": 12, "line": {"width": 2, "color": "white"}},
-                hoverinfo="skip",  # The Line tooltip already covers this point.
-                text=["Live"],
-                textposition="middle right",
-                textfont=dict(
-                    color="#dc3545",
-                    size=12,
-                    family="Arial Black, sans-serif"
-                ),
-            ))
-
+    for parameter, values in series.items():
         graph = dcc.Graph(
-            figure={
-                "data": trace_data,
-                "layout": go.Layout(
-                    uirevision=sensor_name,
-                    template="plotly_white",
-                    xaxis={
-                        "tickangle": -45, "showgrid": True, "gridcolor": "#f0f0f0",
-                        "linecolor": "#dcdcdc", "showline": True
-                    },
-                    yaxis={
-                        "title": f"{parameter.replace('_', ' ').capitalize()}{f' ({unit})' if unit else ''}",
-                        "range": [min_y - y_padding, max_y + y_padding],
-                        "showgrid": True, "gridcolor": "#f0f0f0",
-                    },
-                    margin={"l": 60, "r": 40, "t": 40, "b": 80},
-                    height=300,
-                    showlegend=False,
-                    hovermode="x unified"  # vertical line hover
-                )
-            },
+            id={"type": "sensor-graph", "parameter": parameter},
+            figure=build_figure(sensor_name, parameter, values, radio, thin=year_view, show_live=is_active),
             config={
                 "responsive": True,
                 'displayModeBar': False,
@@ -213,6 +267,40 @@ def update_multi_sensor_graph(radio, slider, sensor_name, deploy_data, live_data
         )
         graphs.append(dbc.Col(graph, xs=12, sm=12, md=12, lg=12))
     return graphs
+
+
+@callback(
+    Output({"type": "sensor-graph", "parameter": MATCH}, "figure"),
+    Input({"type": "sensor-graph", "parameter": MATCH}, "relayoutData"),
+    [State("date-range-radio", "value"),
+     State("historic-date-slider", "value"),
+     State("sensor-name-store", "data"),
+     State("selected-deployment-store", "data")],
+    prevent_initial_call=True
+)
+def reload_year_graph_on_zoom(relayout, radio, slider, sensor_name, deploy_data):
+    if not relayout or not is_year_view(radio, deploy_data):
+        raise PreventUpdate
+
+    parameter = ctx.triggered_id["parameter"]
+
+    if relayout.get("xaxis.autorange"):  # Double click: back to the whole year
+        start, end = graph_window(radio, slider, deploy_data)
+        series = load_series(sensor_name, start, end, parameter)
+        show_live = get_sensor_by_name(sensor_name).is_online
+    elif "xaxis.range[0]" in relayout:
+        # The axis shows the sensor's local time
+        start = parse_date(relayout["xaxis.range[0]"])
+        end = parse_date(relayout["xaxis.range[1]"])
+        series = load_series(sensor_name, start, end, parameter, localize_input=True)
+        show_live = False  # The last point on screen may be months old
+    else:
+        raise PreventUpdate
+
+    if parameter not in series:
+        raise PreventUpdate
+
+    return build_figure(sensor_name, parameter, series[parameter], radio, thin=True, show_live=show_live)
 
 # ----------------------------
 # File download
@@ -279,13 +367,13 @@ def toggle_sensor_health_offcanvas(n_clicks, is_open):
 
 @callback(
     [Output("battery-gauge", "value"),
-     Output("battery-gauge", "label"),
+     Output("battery-value", "children"),
      Output("battery-gauge", "color"),
      Output("rssi-progress", "value"),
-     Output("rssi-progress", "label"),
+     Output("rssi-value", "children"),
      Output("rssi-progress", "color"),
      Output("snr-progress", "value"),
-     Output("snr-progress", "label"),
+     Output("snr-value", "children"),
      Output("snr-progress", "color"),
      Output("board-temp-value", "children"),
      Output("board-temp-container", "style")],
@@ -353,7 +441,7 @@ def update_sensor_health(sensor_name, live_data):
 
     # Return updated values, labels, and colors
     return (
-        battery if battery is not None else 0, battery_label, battery_color,
+        battery if battery is not None else BATTERY_MIN_V, battery_label, battery_color,
         rssi_transformed if rssi is not None else 0, rssi_label, rssi_color,
         snr_transformed if snr is not None else 0, snr_label, snr_color,
         board_temp_label, board_temp_style,
@@ -642,10 +730,14 @@ def update_history_list(sensor_name):
 #-----------------
 # MAP UPDATE
 #-----------------
+def map_viewport(center, zoom):
+    # The map only reads its center and zoom props once, when it is first created.
+    return {"center": center, "zoom": zoom, "transition": "flyTo"}
+
+
 @callback(
     [Output("map-markers", "children", allow_duplicate=True),
-     Output("dashboard-map", "center"),
-     Output("dashboard-map", "zoom")],
+     Output("dashboard-map", "viewport")],
     [Input("selected-deployment-store", "data"),
      Input("sensor-name-store", "data")],
     prevent_initial_call=True
@@ -657,7 +749,7 @@ def update_map_view(deploy_data, sensor_name):
 
     if not deploy_data or deploy_data.get('is_current', True):
         markers, map_center, map_zoom = create_map_markers(sensor_name)
-        return markers, map_center, map_zoom
+        return markers, map_viewport(map_center, map_zoom)
 
     # Historic mode
     lat = deploy_data.get('latitude')
@@ -690,4 +782,4 @@ def update_map_view(deploy_data, sensor_name):
         icon=icon_opts
     )]
 
-    return historic_marker, [lat, lon], 12
+    return historic_marker, map_viewport([lat, lon], 12)

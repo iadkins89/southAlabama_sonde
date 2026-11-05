@@ -3,13 +3,21 @@ import dash_bootstrap_components as dbc
 from datetime import datetime
 import pytz
 import dash_leaflet as dl
-from server.utils import create_map_markers, get_carto_tile_url
+from server.utils import BATTERY_MIN_V, create_map_markers, get_carto_tile_url
 
 register_page(
     __name__,
     top_nav=False,
     path='/dashboard'
 )
+
+def health_heading(title, title_class, value_id):
+    # The value sits beside the title because a weak reading's bar is too short to hold it.
+    return html.Div(
+        [html.H5(title, className=title_class), html.Span(id=value_id, className="health-value")],
+        className="health-heading"
+    )
+
 
 def layout(sensor=None, **other_unknown_query_strings):
     cst = pytz.timezone('America/Chicago')
@@ -145,12 +153,12 @@ def layout(sensor=None, **other_unknown_query_strings):
 
                         dbc.Offcanvas(
                             html.Div([
-                                html.H5("Battery Level", className="battery-label"),
+                                health_heading("Battery Level", "battery-label", "battery-value"),
                                 dbc.Progress(id="battery-gauge", value=75, animated=True, striped=True, color="success",
-                                             min=3.4, max=4.2, className="progress-bar"),
-                                html.H5("RSSI", className="rssi-label"),
+                                             min=BATTERY_MIN_V, max=4.2, className="progress-bar"),
+                                health_heading("RSSI", "rssi-label", "rssi-value"),
                                 dbc.Progress(id="rssi-progress", value=50, color="warning", className="progress-bar"),
-                                html.H5("SNR", className="snr-label"),
+                                health_heading("SNR", "snr-label", "snr-value"),
                                 dbc.Progress(id="snr-progress", value=30, color="danger", className="progress-bar"),
                                 html.Div([
                                     html.H5("Board Temperature", className="snr-label"),
