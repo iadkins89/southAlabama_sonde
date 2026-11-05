@@ -1,3 +1,6 @@
+import hmac
+import os
+
 from flask import request, jsonify
 from .models import (SensorData,
                      get_sensor_by_name,
@@ -9,9 +12,29 @@ from .tide_gauge import begin_reading, finish_reading
 from server.parser import parse_lora_message, parse_iridium_message
 
 
+def ingest_token_ok():
+    """
+    Checks the shared secret on an incoming packet. Senders that can set headers
+    use X-Ingest-Token; the others can use ?token= in the URL. With INGEST_TOKEN
+    unset every packet is accepted, so the token can be added to the senders first.
+    """
+    expected = os.environ.get("INGEST_TOKEN")
+    if not expected:
+        return True
+
+    supplied = request.headers.get("X-Ingest-Token") or request.args.get("token") or ""
+    return hmac.compare_digest(supplied.encode(), expected.encode())
+
+
 def setup_routes(server):
+    if not os.environ.get("INGEST_TOKEN"):
+        print("WARNING: INGEST_TOKEN is not set, so /receive_data accepts packets from anyone")
+
     @server.route('/receive_data', methods=['POST'])
     def receive_data():
+        if not ingest_token_ok():
+            return jsonify({'error': 'Invalid or missing token'}), 401
+
         sensor_data = request.json
         if not sensor_data:
             return jsonify({'error': 'No JSON payload received'}), 400

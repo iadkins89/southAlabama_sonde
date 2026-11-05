@@ -23,6 +23,10 @@ from flask import session
 def submit_onboarding_form(n_clicks, device_name, latitude, longitude, timezone, device_type, image_data,
                            gauge_elevation):
     if n_clicks:
+        # The page checks the login too, but this callback can be called directly
+        if not session.get('user_logged_in'):
+            return dbc.Alert("Please log in again.", color="danger"), no_update
+
         # Validate required fields
         if not all([device_name, latitude, longitude, device_type]):
             return dbc.Alert("Device name, latitude, longitude, and device type fields are required!", color="danger"), no_update

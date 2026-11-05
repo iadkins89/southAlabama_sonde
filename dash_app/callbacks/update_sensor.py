@@ -1,6 +1,7 @@
 from dash import callback, Input, Output, State, callback_context
 from server.models import get_sensor_by_name, create_or_update_sensor, get_all_sensors
 import dash_bootstrap_components as dbc
+from flask import session
 
 @callback(
     Output("select-device-dropdown", "options"),
@@ -71,6 +72,10 @@ def update_sensor_information(submit_clicks, deactivate_clicks, original_name, n
     # Determine which button was clicked
     ctx = callback_context
     if not ctx.triggered: return ""
+
+    # The page checks the login too, but this callback can be called directly
+    if not session.get('user_logged_in'):
+        return dbc.Alert("Please log in again.", color="danger")
 
     button_id = ctx.triggered[0]['prop_id'].split('.')[0]
 
