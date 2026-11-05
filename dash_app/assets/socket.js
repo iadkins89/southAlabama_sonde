@@ -18,6 +18,10 @@ function initSocket() {
         });
 
         socket.on("sensor_update", (data) => {
+            // Every sensor's packets reach every browser, so only react to the one on screen
+            const sensorOnScreen = new URLSearchParams(window.location.search).get("sensor");
+            if (data.sensor !== sensorOnScreen) return;
+
             console.log("📡 Sensor update received:", data);
             dash_clientside.set_props("live-sensor-data", { data: data });
         });
