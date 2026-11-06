@@ -912,8 +912,9 @@ a {
 
 .reading-label {
     display: flex;
+    flex-wrap: wrap;
     justify-content: space-between;
-    gap: 6px;
+    gap: 0 6px;
     color: var(--ink-3);
     font-size: 0.8rem;
 }
@@ -942,7 +943,7 @@ a {
     margin: 6px 0 4px;
 }
 
-.reading-change, .reading-range {
+.reading-change {
     color: var(--ink-3);
     font-size: 0.74rem;
     font-variant-numeric: tabular-nums;

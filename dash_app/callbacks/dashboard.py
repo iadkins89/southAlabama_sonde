@@ -23,13 +23,18 @@ GAUGE_GAP = timedelta(minutes=15)
 LIVE_COLOR = "#dc3545"
 LINE_COLOR = "#0e8f8a"
 SUSPECT_COLOR = "#e8710a"
-TIDE_STEADY_M = 0.005
+TREND_WINDOW = timedelta(hours=1)
+TREND_MIN_SPAN = timedelta(minutes=30)
+TREND_MIN_READINGS = 4  # A sonde reports every 15 minutes, so 5 is a full hour
+TIDE_STEADY_M = 0.005  # Provisional, over the hour, until field data sets the noise floor
 
 TYPE_ICONS = {"tide_gauge": "bi-water", "wave_gauge": "bi-tsunami", "sonde": "bi-droplet-half"}
 
 # The 1 year view sends each block's low and high instead of every reading, until
 # a zoom brings the span down to this length.
 THIN_BLOCKS = 1000
+SPARKLINE_BLOCKS = 60
+SPARKLINE_GAP = timedelta(hours=1)  # Sondes report less often than gauges, so a break needs a longer gap
 THIN_ABOVE = timedelta(days=31)
 PAST_DEPLOYMENT_THIN_ABOVE = timedelta(days=180)
 PLAYBACK_DEFAULT = timedelta(days=30)  # How much of a past deployment shows at first
@@ -77,64 +82,104 @@ def format_location(latitude, longitude):
     return f"{abs(latitude)}\u00B0{north_south}   {abs(longitude)}\u00B0{east_west}"
 
 
-def sparkline_src(values, width=120, height=30):
-    """A small trend line, as an image so that a tile stays light."""
-    step = max(1, len(values) // 60)
-    points = list(values[::step])
-    if len(points) < 2:
+def sparkline_src(timestamps, values, max_gap, width=120, height=30):
+    """
+    A small trend line, as an image so that a tile stays light. Points sit by their
+    real time, and thin_line keeps each block's low and high, the newest reading
+    and a break at every outage.
+    """
+    span = (timestamps[-1] - timestamps[0]).total_seconds() if len(timestamps) > 1 else 0
+    if not span:
         return None
-    low, high = min(points), max(points)
-    spread = (high - low) or 1
-    coords = " ".join(
-        f"{i * width / (len(points) - 1):.1f},{height - 2 - (v - low) / spread * (height - 4):.1f}"
-        for i, v in enumerate(points)
-    )
+
+    low, high = min(values), max(values)
+    range_of_values = (high - low) or 1
+
+    path = []
+    start_new_stretch = True
+    for moment, value in zip(*thin_line(timestamps, values, max_gap, blocks=SPARKLINE_BLOCKS)):
+        if value is None:
+            start_new_stretch = True
+            continue
+        x = (moment - timestamps[0]).total_seconds() / span * width
+        y = height - 2 - (value - low) / range_of_values * (height - 4)
+        path.append(f"{'M' if start_new_stretch else 'L'}{x:.1f} {y:.1f}")
+        start_new_stretch = False
+
     svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" preserveAspectRatio="none">'
-           f'<polyline points="{coords}" fill="none" stroke="{LINE_COLOR}" stroke-width="2" '
+           f'<path d="{" ".join(path)}" fill="none" stroke="{LINE_COLOR}" stroke-width="2" '
            'stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>')
     return "data:image/svg+xml," + quote(svg)
 
 
-def tide_direction(timestamps, values):
-    """Whether water is rising, from the last hour of readings."""
-    hour_ago = timestamps[-1] - timedelta(hours=1)
-    earlier = [v for t, v in zip(timestamps, values) if t >= hour_ago]
-    if len(earlier) < 2:
+def trend_start(latest, deploy_data):
+    """A tile's trend covers the last 24 hours, but never reaches past the current deployment."""
+    start = latest - timedelta(hours=24)
+    if deploy_data and deploy_data.get('is_current', False):
+        start = max(start, parse_date(deploy_data['start_iso']))
+    return start
+
+
+def hourly_change(timestamps, values):
+    """
+    How much a reading changed over the last hour, and the minutes that covers.
+    It comes from a line through every reading, so one noisy reading can't decide
+    it. None if the hour holds too little data to fit a line.
+    """
+    window_start = timestamps[-1] - TREND_WINDOW
+    recent = [(t, v) for t, v in zip(timestamps, values) if t >= window_start]
+    if len(recent) < TREND_MIN_READINGS:
         return None
-    change = earlier[-1] - earlier[0]
+
+    seconds = [(t - recent[0][0]).total_seconds() for t, _ in recent]
+    if seconds[-1] < TREND_MIN_SPAN.total_seconds():
+        return None
+
+    levels = [v for _, v in recent]
+    mean_seconds = sum(seconds) / len(seconds)
+    mean_level = sum(levels) / len(levels)
+    slope = (sum((x - mean_seconds) * (y - mean_level) for x, y in zip(seconds, levels))
+             / sum((x - mean_seconds) ** 2 for x in seconds))
+
+    return slope * seconds[-1], seconds[-1] / 60
+
+
+def tide_trend(change):
+    """Just after high or low water this lags, because the hour still holds the tide before the turn."""
     if abs(change) < TIDE_STEADY_M:
         return "Steady"
     return "Rising" if change > 0 else "Falling"
 
 
-def change_line(change, decimals):
+def change_line(change, minutes, decimals, unit):
+    # Readings 6 minutes apart span 54 to 60 minutes, which is still the last hour
+    period = "last hour" if minutes >= 50 else f"last {round(minutes)} min"
     if round(change, decimals) == 0:
-        return html.Div([html.I(className="bi bi-arrow-right"), "No change in 24 h"], className="reading-change")
+        return html.Div([html.I(className="bi bi-arrow-right"), f"No net change in {period}"],
+                        className="reading-change")
     arrow = "bi-arrow-up-right" if change > 0 else "bi-arrow-down-right"
-    return html.Div([html.I(className=f"bi {arrow}"), f"{change:+.{decimals}f} in 24 h"], className="reading-change")
+    amount = f"{change:+.{decimals}f} {unit or ''}".strip()
+    return html.Div([html.I(className=f"bi {arrow}"), f"{amount} in {period}"], className="reading-change")
 
 
 def reading_tile(label, value, unit, values=None, timestamps=None, is_water_level=False):
-    decimals = 3 if is_water_level else 1
-    detail = []
     sparkline = None
-
+    hourly = None
     if values and len(values) > 1:
-        sparkline = sparkline_src(values)
-        detail.append(change_line(values[-1] - values[0], decimals))
-        detail.append(html.Div(f"24 h range {min(values):.{decimals}f} to {max(values):.{decimals}f}",
-                               className="reading-range"))
+        sparkline = sparkline_src(timestamps, values, GAUGE_GAP if is_water_level else SPARKLINE_GAP)
+        hourly = hourly_change(timestamps, values)
 
-    direction = tide_direction(timestamps, values) if is_water_level and values else None
+    trend = tide_trend(hourly[0]) if is_water_level and hourly else None
 
     return html.Div(
         [
-            html.Div([html.Span(label), html.Span(direction, className="reading-direction") if direction else None],
+            html.Div([html.Span(label),
+                      html.Span(f"{trend}, last hour", className="reading-direction") if trend else None],
                      className="reading-label"),
             html.Div([value, html.Span(f" {unit}" if unit else "", className="reading-unit")],
                      className="reading-value"),
             html.Img(src=sparkline, className="reading-sparkline", alt="") if sparkline else None,
-            *detail,
+            change_line(*hourly, 3 if is_water_level else 1, unit) if hourly else None,
         ],
         className="reading-tile"
     )
@@ -172,6 +217,7 @@ def quality_panel(sensor_name):
             ),
             html.Div("Failed readings stay out of the graphs but remain in CSV downloads.", className="quality-foot")
             if counts.get(FAIL) else None,
+            html.Div("Using initial QC limits.", className="quality-foot"),
         ],
         className="quality-panel"
     )
@@ -711,7 +757,7 @@ def update_summary_from_url(sensor_name, live_data, deploy_data):
         return title, hero_meta(sensor, location), html.P("No data received yet.", className="empty-text")
 
     latest = recent_measurements[0]["timestamp"]
-    day = load_series(sensor_name, latest - timedelta(hours=24), latest)
+    day = load_series(sensor_name, trend_start(latest, deploy_data), latest)
 
     tiles = []
     for measurement in recent_measurements:
