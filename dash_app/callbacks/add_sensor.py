@@ -78,7 +78,7 @@ def show_add_sensor_preview(image_data):
     default_style = {
         "width": "100%", "height": "80px", "lineHeight": "80px",
         "borderWidth": "1px", "borderStyle": "dashed",
-        "borderRadius": "5px", "textAlign": "center", "margin": "10px",
+        "borderRadius": "5px", "textAlign": "center", "margin": "10px 0",
     }
 
     if not image_data:
@@ -89,7 +89,7 @@ def show_add_sensor_preview(image_data):
     image_style = {
         "width": "100%", "height": "300px",
         "borderWidth": "1px", "borderStyle": "solid",
-        "borderRadius": "5px", "textAlign": "center", "margin": "10px",
+        "borderRadius": "5px", "textAlign": "center", "margin": "10px 0",
         "display": "flex", "alignItems": "center", "justifyContent": "center",
         "overflow": "hidden"
     }

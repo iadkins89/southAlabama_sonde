@@ -14,22 +14,22 @@ def layout():
 
     layout = dbc.Container([
         html.H2("Add New Sensor", className="text-center mt-4"),
-        dbc.Button("Back", href="/onboarding", color="secondary", className="mb-4"),
+        dbc.Button("\u2190 Back", href="/onboarding", color="secondary", outline=True, size="sm", className="mb-4"),
         dbc.Form([
             dbc.Row([
-                dbc.Col(dbc.Label("Device Name", className="text-start text-md-end"), width=12, md=2),
-                dbc.Col(dbc.Input(type="text", id="device-name", placeholder="Enter device name"), width=12, md=10),
+                dbc.Col(dbc.Label("Device Name", className="text-start text-md-end"), width=12, md=3),
+                dbc.Col(dbc.Input(type="text", id="device-name", placeholder="Enter device name"), width=12, md=9),
             ], className="mb-3"),
             dbc.Row([
-                dbc.Col(dbc.Label("Latitude", className="text-start text-md-end"), width=12, md=2),
-                dbc.Col(dbc.Input(type="number", id="latitude", placeholder="Enter latitude"), width=12, md=10),
+                dbc.Col(dbc.Label("Latitude", className="text-start text-md-end"), width=12, md=3),
+                dbc.Col(dbc.Input(type="number", id="latitude", placeholder="Enter latitude"), width=12, md=9),
             ], className="mb-3"),
             dbc.Row([
-                dbc.Col(dbc.Label("Longitude", className="text-start text-md-end"), width=12, md=2),
-                dbc.Col(dbc.Input(type="number", id="longitude", placeholder="Enter longitude"), width=12, md=10),
+                dbc.Col(dbc.Label("Longitude", className="text-start text-md-end"), width=12, md=3),
+                dbc.Col(dbc.Input(type="number", id="longitude", placeholder="Enter longitude"), width=12, md=9),
             ], className="mb-3"),
             dbc.Row([
-                dbc.Col(dbc.Label("Timezone", className="text-start text-md-end"), width=12, md=2),
+                dbc.Col(dbc.Label("Timezone", className="text-start text-md-end"), width=12, md=3),
                 dbc.Col(
                     dcc.Dropdown(
                         id="timezone",
@@ -42,11 +42,11 @@ def layout():
                         clearable=False,
                         style={'color': 'black'}
                     ),
-                    width=12, md=10
+                    width=12, md=9
                 ),
             ], className="mb-3"),
             dbc.Row([
-                dbc.Col(dbc.Label("Device Type", className="text-start text-md-end"), width=12, md=2),
+                dbc.Col(dbc.Label("Device Type", className="text-start text-md-end"), width=12, md=3),
                 dbc.Col(
                     dbc.RadioItems(
                         id="device-type",
@@ -58,23 +58,23 @@ def layout():
                         ],
                         inline=False,
                         className="custom-radio mt-2",
-                    ), width=12, md=10
+                    ), width=12, md=9
                 ),
             ], className="mb-3"),
             html.Div(
                 dbc.Row([
-                    dbc.Col(dbc.Label("NAVD88 Elevation (m)", className="text-start text-md-end"), width=12, md=2),
+                    dbc.Col(dbc.Label("NAVD88 Elevation (m)", className="text-start text-md-end"), width=12, md=3),
                     dbc.Col(
                         dbc.Input(type="number", id="gauge-elevation",
                                   placeholder="Enter gauge elevation in NAVD88"),
-                        width=12, md=10
+                        width=12, md=9
                     ),
                 ], className="mb-3"),
                 id="gauge-elevation-row",
                 style={"display": "none"}
             ),
             dbc.Row([
-                dbc.Col(dbc.Label("Device Image", className="text-start text-md-end"), width=12, md=2),
+                dbc.Col(dbc.Label("Device Image", className="text-start text-md-end"), width=12, md=3),
                 dbc.Col([
                     dcc.Upload(
                         id="device-image",
@@ -90,21 +90,21 @@ def layout():
                             "borderStyle": "dashed",
                             "borderRadius": "5px",
                             "textAlign": "center",
-                            "margin": "10px",
+                            "margin": "10px 0",
                         },
                         multiple=False,
                         accept="image/*"
                     ),
-                ], width=12, md=10),
+                ], width=12, md=9),
             ], className="mb-3"),
             dbc.Row([
                 dbc.Col(
-                    dbc.Button("Submit", id="submit-btn", color="success", className="mt-3 w-100"),
-                    width=12, md={"size": 4, "offset": 2},
+                    dbc.Button("Submit", id="submit-btn", color="primary", className="mt-3 w-100"),
+                    width=12,
                 ),
             ]),
             html.Div(id="submission-response", className="mt-3"),
         ]),
-    ], className="px-3 py-3")
+    ], className="form-page px-3 py-3")
     return layout
 

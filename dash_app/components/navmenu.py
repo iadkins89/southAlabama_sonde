@@ -60,6 +60,6 @@ def create_menu():
             fluid=True
         ),
         class_name="custom-navbar",
-        expand=False,
+        expand="lg",
     )
     return navmenu

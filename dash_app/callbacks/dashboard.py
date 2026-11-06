@@ -744,7 +744,11 @@ def update_history_list(sensor_name):
 #-----------------
 # MAP UPDATE
 #-----------------
-def map_viewport(center, zoom):
+def map_viewport(center, zoom, current):
+    # A page change updates this callback twice, and a second flight would restart the
+    # first one partway through, so the map wobbles.
+    if current and current.get("center") == center and current.get("zoom") == zoom:
+        return no_update
     # The map only reads its center and zoom props once, when it is first created.
     return {"center": center, "zoom": zoom, "transition": "flyTo"}
 
@@ -754,17 +758,18 @@ def map_viewport(center, zoom):
      Output("dashboard-map", "viewport")],
     [Input("selected-deployment-store", "data"),
      Input("sensor-name-store", "data")],
-    State("show-inactive-store", "data"),  # Global, so as an Input it would fire on other pages
+    [State("show-inactive-store", "data"),  # Global, so as an Input it would fire on other pages
+     State("dashboard-map", "viewport")],
     prevent_initial_call="initial_duplicate"
 )
-def update_map_view(deploy_data, sensor_name, show_inactive):
+def update_map_view(deploy_data, sensor_name, show_inactive, current_viewport):
 
     if not sensor_name:
         raise PreventUpdate
 
     if not deploy_data or deploy_data.get('is_current', True):
         markers, map_center, map_zoom = create_map_markers(sensor_name, show_inactive=bool(show_inactive))
-        return markers, map_viewport(map_center, map_zoom)
+        return markers, map_viewport(map_center, map_zoom, current_viewport)
 
     # Historic mode
     lat = deploy_data.get('latitude')
@@ -797,4 +802,4 @@ def update_map_view(deploy_data, sensor_name, show_inactive):
         icon=icon_opts
     )]
 
-    return historic_marker, map_viewport([lat, lon], 12)
+    return historic_marker, map_viewport([lat, lon], 12, current_viewport)

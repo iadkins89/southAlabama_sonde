@@ -49,7 +49,6 @@ def layout():
 			html.Ul(
 			[
 				html.Li("Monitor environmental parameters such as water quality, temperature, and salinity.", style={"margin-left": "14.5%", "margin-right": "14.5%"}),
-				html.Li("Track the movement and behavior of marine and coastal wildlife.", style={"margin-left": "14.5%", "margin-right": "14.5%"}),
 				html.Li("Support scientific research and conservation efforts with high-quality data.", style={"margin-left": "14.5%", "margin-right": "14.5%"}),
 				html.Li("Provide valuable information to stakeholders, including researchers, environmental agencies, and the general public.", style={"margin-left": "14.5%", "margin-right": "14.5%"}),
 			]
