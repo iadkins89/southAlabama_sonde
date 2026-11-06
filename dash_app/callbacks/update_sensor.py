@@ -1,5 +1,6 @@
 from dash import callback, Input, Output, State, callback_context
 from server.models import get_sensor_by_name, create_or_update_sensor, get_all_sensors
+from server.utils import upload_preview
 import dash_bootstrap_components as dbc
 from flask import session
 
@@ -32,6 +33,19 @@ def toggle_update_gauge_elevation_field(device_type):
     return {"display": "none"}
 
 @callback(
+    [Output("update-device-image", "children"),
+     Output("update-device-image", "style")],
+    [Input("update-device-image", "contents"),
+     Input("select-device-dropdown", "value")]
+)
+def show_update_sensor_preview(image_data, selected_device):
+    # With no new upload, show the photo the sensor already has
+    if not image_data and selected_device:
+        sensor = get_sensor_by_name(selected_device)
+        image_data = sensor.image_data if sensor else None
+    return upload_preview(image_data)
+
+@callback(
     [Output("update-device-name", "value"),
      Output("update-latitude", "value"),
      Output("update-longitude", "value"),
@@ -39,7 +53,8 @@ def toggle_update_gauge_elevation_field(device_type):
      Output("update-gauge-elevation", "value"),
      Output("sensor-active-status-store", "data"),  # Store the status
      Output("toggle-active-btn", "children"),  # Change button text
-     Output("toggle-active-btn", "color")],
+     Output("toggle-active-btn", "color"),
+     Output("update-device-image", "contents")],  # A photo chosen for one sensor must not carry to the next
     [Input("select-device-dropdown", "value")]
 )
 def populate_form_with_device_info(selected_device):
@@ -51,8 +66,8 @@ def populate_form_with_device_info(selected_device):
         btn_color = "danger" if sensor.active else "success"
 
         return (sensor.name, sensor.latitude, sensor.longitude, sensor.device_type, sensor.navd88_elevation,
-                sensor.active, btn_text, btn_color)
-    return "", "", "", "", "", "", "", ""
+                sensor.active, btn_text, btn_color, None)
+    return "", "", "", "", "", "", "", "", None
 
 @callback(
     Output("update-submission-response", "children"),

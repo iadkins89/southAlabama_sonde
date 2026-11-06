@@ -169,6 +169,18 @@
         }
     });
 
+    // ----- Home page list: step through each sensor's readings -----
+    setInterval(function () {
+        document.querySelectorAll(".sensor-row-value").forEach(function (list) {
+            var readings = Array.prototype.slice.call(list.children);
+            if (readings.length < 2) return;
+            var shown = readings.findIndex(function (reading) { return reading.style.display !== "none"; });
+            readings.forEach(function (reading, i) {
+                reading.style.display = i === (shown + 1) % readings.length ? "" : "none";
+            });
+        });
+    }, 3500);
+
     new MutationObserver(function () {
         clearTimeout(window.__satTimes);
         window.__satTimes = setTimeout(refreshTimes, 50);

@@ -71,9 +71,9 @@ def sonde_rows(start, end, rng):
         hours = (when - start).total_seconds() / HOUR
         daily = math.sin(2 * math.pi * (when.hour + when.minute / 60 - 9) / 24)
         temperature = 22 + 8 * math.sin(2 * math.pi * (day - 110) / 365) + 0.8 * daily + rng.gauss(0, 0.05)
-        salinity = 14 + 5 * math.sin(2 * math.pi * hours / 24.84) + 3 * math.sin(2 * math.pi * day / 60)
+        conductivity = 23000 + 8000 * math.sin(2 * math.pi * hours / 24.84) + 5000 * math.sin(2 * math.pi * day / 60)
         oxygen = 11 - 0.17 * temperature + 0.7 * daily + rng.gauss(0, 0.08)
-        yield when, {"temperature": round(temperature, 2), "salinity": round(max(salinity, 0), 2),
+        yield when, {"temperature": round(temperature, 2), "conductivity": round(max(conductivity, 0), 1),
                      "ph": round(7.8 + 0.15 * daily + rng.gauss(0, 0.01), 2),
                      "dissolved_oxygen": round(oxygen, 2)}
         when += timedelta(minutes=15)
@@ -110,7 +110,7 @@ def main():
                 for when, level, flag in gauge_rows(start, end, rng)]
 
         parameter_ids = {name: get_or_create_parameter(name).id
-                         for name in ("temperature", "salinity", "ph", "dissolved_oxygen",
+                         for name in ("temperature", "conductivity", "ph", "dissolved_oxygen",
                                       "board_temperature", "rssi", "snr")}
         for when, readings in sonde_rows(start, end, rng):
             for name, value in readings.items():

@@ -37,6 +37,19 @@ def sensor_state(sensor):
     return "online" if sensor.get('is_online', False) else "offline"
 
 
+def upload_preview(image_data):
+    """What a photo upload box shows: the chosen image, or the prompt if there is none."""
+    box = {"width": "100%", "borderWidth": "1px", "borderRadius": "5px", "textAlign": "center", "margin": "10px 0"}
+
+    if not image_data:
+        return (html.Div(["Drag and Drop or ", html.A("Select an Image File")]),
+                {**box, "height": "80px", "lineHeight": "80px", "borderStyle": "dashed"})
+
+    return (html.Img(src=image_data, alt="Sensor photo preview", style={"maxHeight": "100%", "maxWidth": "100%"}),
+            {**box, "height": "300px", "borderStyle": "solid", "display": "flex", "alignItems": "center",
+             "justifyContent": "center", "overflow": "hidden"})
+
+
 def relative_time(moment):
     """A time that assets/app.js keeps up to date, such as "5 min ago"."""
     return html.Span(moment.strftime("%b %d, %H:%M UTC"), **{"data-time": moment.isoformat() + "Z"})
@@ -342,14 +355,16 @@ def sensor_row(sensor):
     state = sensor_state(sensor)
     last_report = sensor.get('last_report')
 
-    headline = None
+    # Deactivated sensors have no current readings to show. assets/app.js cycles through these.
+    readings = []
     if sensor.get('active'):
-        readings = {row[1]: row for row in get_most_recent(name)}
-        for wanted in ("water_level", "temperature"):
-            if wanted in readings:
-                data, parameter, unit = readings[wanted]
-                headline = f"{round(data.value, display_decimals(parameter))} {unit or ''}".strip()
-                break
+        rows = [row for row in get_most_recent(name) if row[1] not in ("latitude", "longitude")]
+        for i, (data, parameter, unit) in enumerate(sorted(rows, key=lambda row: row[1].lower())):
+            value = round(data.value, display_decimals(parameter))
+            text = f"{parameter_label(parameter)} {value} {unit or ''}".strip()
+            # Hidden here, not in the stylesheet, so that a stale stylesheet can't show them all
+            readings.append(html.Div(text, className="sensor-row-reading",
+                                     style={} if i == 0 else {"display": "none"}))
 
     row = dcc.Link(
         [
@@ -365,7 +380,7 @@ def sensor_row(sensor):
                 ],
                 className="sensor-row-text"
             ),
-            html.Div(headline, className="sensor-row-value") if headline else None,
+            html.Div(readings, className="sensor-row-value") if readings else None,
         ],
         href=f"/dashboard?sensor={name}",
         className="sensor-row",

@@ -89,7 +89,6 @@ def layout():
                             multiple=False,
                             accept="image/*"
                         ),
-                        html.Div(html.Img(id="update-image-preview",style={"width": "100%", "max-width": "300px", "marginTop": "10px"}), className="text-center"),
                         ], width=12, sm=8
                     ),
                 ], className="mb-3"),

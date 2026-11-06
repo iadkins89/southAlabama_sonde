@@ -606,11 +606,32 @@ a {
 }
 
 .sensor-row-value {
+    flex: 0 0 auto;
     color: var(--ink-2);
     font-size: 0.85rem;
     font-weight: 600;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+}
+
+.sensor-row-reading {
+    animation: reading-in 0.35s ease-out;
+}
+
+/* A long reading beside the name would cut the name off on a phone */
+@media (max-width: 768px) {
+    .sensor-row {
+        flex-wrap: wrap;
+    }
+
+    .sensor-row-value {
+        flex-basis: 100%;
+        padding-left: 19px;
+    }
+}
+
+@keyframes reading-in {
+    from { opacity: 0; }
 }
 
 .sensor-list-empty {
@@ -1470,6 +1491,10 @@ a {
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .sensor-row-reading {
+        animation: none;
+    }
+
     .page, .skeleton, .online-marker, .search-overlay {
         animation: none;
     }
