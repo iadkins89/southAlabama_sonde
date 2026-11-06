@@ -7,6 +7,8 @@ import unittest
 from datetime import datetime
 from unittest import mock
 
+from tests.shared_app import get_server
+
 TEST_DB = os.environ.get("TEST_DATABASE_URL")
 if TEST_DB:
     os.environ["DATABASE_URL"] = TEST_DB
@@ -63,10 +65,7 @@ def update_sensor_call(button):
 class Security(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from dash_app import create_app
-        from server import create_server
-        cls.server = create_server()
-        create_app(cls.server)
+        cls.server = get_server()
 
     def setUp(self):
         from server.database import db, run_migrations

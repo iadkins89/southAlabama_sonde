@@ -3,25 +3,36 @@ from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
 from datetime import datetime, timedelta
-from server.utils import BATTERY_MIN_V, save_data_to_csv, get_measurement_summary,create_map_markers, get_deployment_statistics
+from server.utils import (BATTERY_MIN_V, device_type_label, display_decimals, parameter_label, relative_time,
+                          sensor_label)
+from server.utils import save_data_to_csv, get_measurement_summary,create_map_markers, get_deployment_statistics
 from server.models import (get_data,
                            get_sensor_timezone,
                            get_sensor_by_name,
                            get_most_recent,
-                           get_past_deployments)
+                           get_past_deployments,
+                           get_qc_counts)
 import pytz
 from dateutil.parser import parse as parse_date
 import dash_leaflet as dl
-from server.qc import SUSPECT
+from server.qc import FAIL, NOT_EVALUATED, PASS, SUSPECT
+from urllib.parse import quote
 
 # Longer than this between water levels draws as a break in the line, not a bridge.
 GAUGE_GAP = timedelta(minutes=15)
 LIVE_COLOR = "#dc3545"
+LINE_COLOR = "#0e8f8a"
+SUSPECT_COLOR = "#e8710a"
+TIDE_STEADY_M = 0.005
+
+TYPE_ICONS = {"tide_gauge": "bi-water", "wave_gauge": "bi-tsunami", "sonde": "bi-droplet-half"}
 
 # The 1 year view sends each block's low and high instead of every reading, until
 # a zoom brings the span down to this length.
 THIN_BLOCKS = 1000
 THIN_ABOVE = timedelta(days=31)
+PAST_DEPLOYMENT_THIN_ABOVE = timedelta(days=180)
+PLAYBACK_DEFAULT = timedelta(days=30)  # How much of a past deployment shows at first
 
 
 # LoRa decodes signals far weaker than most radios, even below the noise floor (negative SNR).
@@ -31,6 +42,11 @@ RSSI_GOOD_ABOVE = -100
 RSSI_POOR_BELOW = -115
 SNR_GOOD_ABOVE = -5
 SNR_POOR_BELOW = -15
+BOARD_TEMP_BAR_MIN = -20
+BOARD_TEMP_BAR_MAX = 80
+BOARD_TEMP_WARM = 55
+BOARD_TEMP_HOT = 70
+BOARD_TEMP_COLD = -10
 
 
 def signal_color(value, good_above, poor_below):
@@ -39,6 +55,17 @@ def signal_color(value, good_above, poor_below):
     if value >= poor_below:
         return "warning"
     return "danger"
+
+
+def board_temp_bar(temperature):
+    """How full the bar is, and its color. The limits are starting estimates."""
+    span = BOARD_TEMP_BAR_MAX - BOARD_TEMP_BAR_MIN
+    percent = max(0, min(100, int((temperature - BOARD_TEMP_BAR_MIN) * 100 / span)))
+    if temperature > BOARD_TEMP_HOT or temperature < BOARD_TEMP_COLD:
+        return percent, "danger"
+    if temperature > BOARD_TEMP_WARM:
+        return percent, "warning"
+    return percent, "success"
 
 
 def format_location(latitude, longitude):
@@ -50,32 +77,104 @@ def format_location(latitude, longitude):
     return f"{abs(latitude)}\u00B0{north_south}   {abs(longitude)}\u00B0{east_west}"
 
 
-def parameter_label(parameter):
-    if parameter.lower() == "ph":
-        return "pH"
-    return parameter.replace("_", " ").capitalize()
+def sparkline_src(values, width=120, height=30):
+    """A small trend line, as an image so that a tile stays light."""
+    step = max(1, len(values) // 60)
+    points = list(values[::step])
+    if len(points) < 2:
+        return None
+    low, high = min(points), max(points)
+    spread = (high - low) or 1
+    coords = " ".join(
+        f"{i * width / (len(points) - 1):.1f},{height - 2 - (v - low) / spread * (height - 4):.1f}"
+        for i, v in enumerate(points)
+    )
+    svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" preserveAspectRatio="none">'
+           f'<polyline points="{coords}" fill="none" stroke="{LINE_COLOR}" stroke-width="2" '
+           'stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>')
+    return "data:image/svg+xml," + quote(svg)
 
 
-def sensor_label(sensor_name):
-    return sensor_name.replace("_", " ").title()
+def tide_direction(timestamps, values):
+    """Whether water is rising, from the last hour of readings."""
+    hour_ago = timestamps[-1] - timedelta(hours=1)
+    earlier = [v for t, v in zip(timestamps, values) if t >= hour_ago]
+    if len(earlier) < 2:
+        return None
+    change = earlier[-1] - earlier[0]
+    if abs(change) < TIDE_STEADY_M:
+        return "Steady"
+    return "Rising" if change > 0 else "Falling"
 
 
-def reading_tiles(readings):
-    """One tile per (label, value, unit), for the sensor card."""
+def change_line(change, decimals):
+    if round(change, decimals) == 0:
+        return html.Div([html.I(className="bi bi-arrow-right"), "No change in 24 h"], className="reading-change")
+    arrow = "bi-arrow-up-right" if change > 0 else "bi-arrow-down-right"
+    return html.Div([html.I(className=f"bi {arrow}"), f"{change:+.{decimals}f} in 24 h"], className="reading-change")
+
+
+def reading_tile(label, value, unit, values=None, timestamps=None, is_water_level=False):
+    decimals = 3 if is_water_level else 1
+    detail = []
+    sparkline = None
+
+    if values and len(values) > 1:
+        sparkline = sparkline_src(values)
+        detail.append(change_line(values[-1] - values[0], decimals))
+        detail.append(html.Div(f"24 h range {min(values):.{decimals}f} to {max(values):.{decimals}f}",
+                               className="reading-range"))
+
+    direction = tide_direction(timestamps, values) if is_water_level and values else None
+
     return html.Div(
-        [html.Div(
-            [html.Div(label, className="reading-label"),
-             html.Div([value, html.Span(f" {unit}" if unit else "", className="reading-unit")],
-                      className="reading-value")],
-            className="reading-tile"
-        ) for label, value, unit in readings],
-        className="reading-tiles"
+        [
+            html.Div([html.Span(label), html.Span(direction, className="reading-direction") if direction else None],
+                     className="reading-label"),
+            html.Div([value, html.Span(f" {unit}" if unit else "", className="reading-unit")],
+                     className="reading-value"),
+            html.Img(src=sparkline, className="reading-sparkline", alt="") if sparkline else None,
+            *detail,
+        ],
+        className="reading-tile"
     )
 
 
-def display_decimals(parameter):
-    # Tides here are a few tenths of a metre, which 1 decimal would flatten.
-    return 3 if parameter.startswith("water_level") else 1
+def quality_panel(sensor_name):
+    """The QC results behind the graph, in plain words. Empty until a sensor has QC."""
+    counts = get_qc_counts(sensor_name)
+    total = sum(counts.values())
+    if not total:
+        return None
+
+    groups = [
+        (PASS, "Passed", "pass", "bi-check-circle-fill"),
+        (NOT_EVALUATED, "Not evaluated", "unknown", "bi-dash-circle-fill"),
+        (SUSPECT, "Suspect", "suspect", "bi-exclamation-diamond-fill"),
+        (FAIL, "Failed", "fail", "bi-x-circle-fill"),
+    ]
+    shown = [(counts.get(flag, 0), label, key, icon) for flag, label, key, icon in groups if counts.get(flag)]
+
+    return html.Div(
+        [
+            html.Div([html.Span("Data quality"), html.Span("Last 7 days of QARTOD checks", className="quality-note")],
+                     className="quality-title"),
+            html.Div(
+                [html.Div(className=f"quality-segment quality-{key}", style={"flexGrow": count})
+                 for count, _, key, _ in shown],
+                className="quality-bar"
+            ),
+            html.Div(
+                [html.Div([html.I(className=f"bi {icon} quality-icon-{key}"), f"{label} {count / total:.1%}"],
+                          className="quality-item", title=f"{count:,} readings")
+                 for count, label, key, icon in shown],
+                className="quality-legend"
+            ),
+            html.Div("Failed readings stay out of the graphs but remain in CSV downloads.", className="quality-foot")
+            if counts.get(FAIL) else None,
+        ],
+        className="quality-panel"
+    )
 
 
 def break_line_at_gaps(timestamps, values, max_gap):
@@ -130,6 +229,15 @@ def thin_line(timestamps, values, max_gap=None, blocks=THIN_BLOCKS):
 def is_year_view(radio, deploy_data):
     # A past deployment hides the range buttons and uses the slider instead.
     return radio == "1-year" and not (deploy_data and not deploy_data.get('is_current', False))
+
+
+def uses_thinning(radio, slider, deploy_data):
+    if is_year_view(radio, deploy_data):
+        return True
+    if deploy_data and not deploy_data.get('is_current', False):
+        start, end = graph_window(radio, slider, deploy_data)
+        return end - start > PAST_DEPLOYMENT_THIN_ABOVE
+    return False
 
 
 def graph_window(radio, slider, deploy_data):
@@ -201,7 +309,7 @@ def build_figure(sensor_name, parameter, values, radio, thin, show_live):
         line_x, line_y = timestamps, readings
 
     # NAVD88 levels can cross zero, so filling down to zero would mislead.
-    area_style = {} if is_water_level else {"fill": "tozeroy", "fillcolor": "rgba(0, 123, 255, 0.1)"}  # Area chart style
+    area_style = {} if is_water_level else {"fill": "tozeroy", "fillcolor": "rgba(14, 143, 138, 0.10)"}  # Area chart style
 
     trace_data.append(go.Scatter(
         x=line_x,
@@ -209,7 +317,7 @@ def build_figure(sensor_name, parameter, values, radio, thin, show_live):
         mode="lines",
         name="History",
         # A curve through alternating lows and highs would overshoot both.
-        line={"color": "#1f77b4", "width": 1 if thin else 2,
+        line={"color": LINE_COLOR, "width": 1 if thin else 2,
               **({} if thin else {"shape": "spline", "smoothing": 0.3})},
         # <extra></extra> = removes the side box (name/icon)
         hovertemplate=f'%{{y:{hover_format}}} {unit}<extra></extra>',
@@ -224,7 +332,7 @@ def build_figure(sensor_name, parameter, values, radio, thin, show_live):
             y=suspect_y,
             mode="markers",
             name="Suspect",
-            marker={"color": "#fd7e14", "size": 8, "symbol": "diamond",
+            marker={"color": SUSPECT_COLOR, "size": 9, "symbol": "diamond",
                     "line": {"width": 1, "color": "white"}},
             hovertemplate=f'%{{y:{hover_format}}} {unit} (suspect)<extra></extra>'
         ))
@@ -250,17 +358,16 @@ def build_figure(sensor_name, parameter, values, radio, thin, show_live):
         "layout": go.Layout(
             uirevision=f"{sensor_name}-{radio}",  # Keeps a zoom until the range changes
             template="plotly_white",
-            xaxis={
-                "tickangle": -45, "showgrid": True, "gridcolor": "#f0f0f0",
-                "linecolor": "#dcdcdc", "showline": True
-            },
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="rgba(0,0,0,0)",
+            font={"family": "Inter, sans-serif", "size": 12, "color": "#5b6b7a"},
+            xaxis={"showgrid": False, "linecolor": "#dbe2e9", "showline": True, "automargin": True},
             yaxis={
-                "title": f"{parameter_label(parameter)}{f' ({unit})' if unit else ''}",
                 "range": [min_y - y_padding, max_y + y_padding],
-                "showgrid": True, "gridcolor": "#f0f0f0",
+                "showgrid": True, "gridcolor": "#edf1f5", "zeroline": False, "automargin": True,
             },
-            margin={"l": 60, "r": 40, "t": 40, "b": 80},
-            height=300,
+            margin={"l": 8, "r": 16, "t": 8, "b": 8},
+            height=260,
             showlegend=False,
             hovermode="x unified"  # vertical line hover
         )
@@ -291,22 +398,40 @@ def update_multi_sensor_graph(radio, slider, sensor_name, deploy_data, live_data
     series = load_series(sensor_name, start, end)
 
     if not series:
-        return html.Div(f"No data available for sensor '{sensor_name}' in the selected date range.")
+        return dbc.Col(html.Div(
+            [html.Div(html.I(className="bi bi-calendar-x"), className="empty-icon"),
+             html.Div("No readings in this range", className="empty-title"),
+             html.Div("Try a longer range, or check back after the sensor's next report.", className="empty-text")],
+            className="surface-card empty-state"
+        ), xs=12)
 
     is_active = get_sensor_by_name(sensor_name).is_online
+    thin = uses_thinning(radio, slider, deploy_data)
 
     graphs = []
     for parameter, values in series.items():
+        suspect_count = sum(flag == SUSPECT for flag in values["flags"])
+        unit = values["unit"]
+        heading = html.Div(
+            [
+                html.Div([parameter_label(parameter), html.Span(f" {unit}" if unit else "", className="graph-unit")],
+                         className="graph-title"),
+                html.Div([html.I(className="bi bi-diamond-fill"), f"{suspect_count} suspect"], className="graph-chip")
+                if suspect_count else None,
+            ],
+            className="graph-head"
+        )
         graph = dcc.Graph(
             id={"type": "sensor-graph", "parameter": parameter},
-            figure=build_figure(sensor_name, parameter, values, radio, thin=year_view, show_live=is_active),
+            figure=build_figure(sensor_name, parameter, values, radio, thin=thin, show_live=is_active),
             config={
                 "responsive": True,
                 'displayModeBar': False,
                 'displaylogo': False
             },
         )
-        graphs.append(dbc.Col(dbc.Card(graph, className="shadow-sm border-0"), xs=12, sm=12, md=12, lg=12))
+        graphs.append(dbc.Col(html.Div([heading, graph], className="surface-card graph-card"),
+                              xs=12, lg=6 if len(series) > 1 else 12))
     return graphs
 
 
@@ -320,7 +445,7 @@ def update_multi_sensor_graph(radio, slider, sensor_name, deploy_data, live_data
     prevent_initial_call=True
 )
 def reload_year_graph_on_zoom(relayout, radio, slider, sensor_name, deploy_data):
-    if not relayout or not is_year_view(radio, deploy_data):
+    if not relayout or not uses_thinning(radio, slider, deploy_data):
         raise PreventUpdate
 
     parameter = ctx.triggered_id["parameter"]
@@ -416,6 +541,8 @@ def toggle_sensor_health_offcanvas(n_clicks, is_open):
      Output("snr-progress", "value"),
      Output("snr-value", "children"),
      Output("snr-progress", "color"),
+     Output("board-temp-progress", "value"),
+     Output("board-temp-progress", "color"),
      Output("board-temp-value", "children"),
      Output("board-temp-container", "style")],
     [Input("sensor-name-store", "data"),
@@ -464,9 +591,11 @@ def update_sensor_health(sensor_name, live_data):
 
     # Not every device reports this, so the row only appears when there is a value
     if board_temperature is None:
+        board_temp_percent, board_temp_color = 0, "secondary"
         board_temp_label = ""
         board_temp_style = {"display": "none"}
     else:
+        board_temp_percent, board_temp_color = board_temp_bar(board_temperature)
         board_temp_label = f"{board_temperature:.1f} \u00B0C"
         board_temp_style = {"display": "block"}
 
@@ -475,7 +604,7 @@ def update_sensor_health(sensor_name, live_data):
         battery if battery is not None else BATTERY_MIN_V, battery_label, battery_color,
         rssi_transformed if rssi is not None else 0, rssi_label, rssi_color,
         snr_transformed if snr is not None else 0, snr_label, snr_color,
-        board_temp_label, board_temp_style,
+        board_temp_percent, board_temp_color, board_temp_label, board_temp_style,
     )
 
 # ----------------------------
@@ -508,25 +637,39 @@ def get_sensor_pic(sensor_name):
         image_src = "/assets/no_image_available.png"
 
     return image_src
+def avg_label(parameter):
+    label = parameter_label(parameter)
+    return label if label == "pH" else label.lower()
+
+
+def hero_meta(sensor, location, moment=None, archived_range=None):
+    device_type = sensor.device_type if sensor else None
+    items = [html.Span([html.I(className=f"bi {TYPE_ICONS.get(device_type, 'bi-broadcast')}"),
+                        device_type_label(device_type)]),
+             html.Span([html.I(className="bi bi-geo-alt"), location])]
+    if archived_range:
+        items.insert(0, html.Span("Archived View", className="hero-archived"))
+        # If the line is too narrow, the duration moves down whole instead of splitting
+        items.append(html.Span([html.I(className="bi bi-calendar3"), archived_range]))
+    elif moment:
+        items.append(html.Span([html.I(className="bi bi-clock"), "Last report ", relative_time(moment)]))
+    return items
+
+
 @callback(
     [Output("card-title", "children"),
+     Output("hero-meta", "children"),
      Output("summary-content", "children")],
     [Input("sensor-name-store", "data"),
-    Input("live-sensor-data", "data"),
+     Input("live-sensor-data", "data"),
      Input("selected-deployment-store", "data")]
 )
 def update_summary_from_url(sensor_name, live_data, deploy_data):
     if not sensor_name:
-        return "No Sensor Found", html.P("No sensor data was found.", className="text-warning")
+        return "No Sensor Found", None, html.P("No sensor data was found.", className="text-warning")
 
-    # Format Title
-    title = html.Div(
-        sensor_label(sensor_name),
-        style={
-            "text-align": "center",
-            "font-weight": "bold"
-        },
-    )
+    title = sensor_label(sensor_name)
+    sensor = get_sensor_by_name(sensor_name)
 
     # Past Deployment
     if deploy_data and not deploy_data.get('is_current', False):
@@ -534,120 +677,56 @@ def update_summary_from_url(sensor_name, live_data, deploy_data):
         stats = get_deployment_statistics(sensor_name, deploy_data)
 
         if "error" in stats:
-            return title, html.P(stats["error"], className="text-danger text-center small")
+            return title, None, html.P(stats["error"], className="text-danger text-center small")
 
         location = format_location(stats['latitude'], stats['longitude'])
-        if stats["averages"]:
-            parameter_list = reading_tiles([
-                (f"Avg {parameter_label(avg['parameter']).lower()}",
-                 round(avg['value'], display_decimals(avg['parameter'])), avg.get('unit'))
-                for avg in stats["averages"]
-            ])
-        else:
-            parameter_list = html.P("No data available for this period.", className="text-warning text-center small")
+        meta = hero_meta(sensor, location, archived_range=f"{stats['range']} ({stats['duration']})")
 
-        content = html.Div(
-            [
-                html.Div("Archived View", className="badge bg-warning text-dark mb-2 d-table mx-auto"),
-                # If the line is too narrow, the duration moves down whole instead of splitting
-                html.Div(
-                    [html.Span(stats['range'], style={"white-space": "nowrap"}), " ",
-                     html.Span(f"({stats['duration']})", style={"white-space": "nowrap"})],
-                    style={"text-align": "center", "font-weight": "bold", "font-size": "0.9rem"},
-                ),
-                html.Div(
-                    location,
-                    style={"text-align": "center", "font-size": "14px", "margin-bottom": "10px"}
-                ),
-                parameter_list,
-            ]
+        if not stats["averages"]:
+            return title, meta, html.P("No data available for this period.", className="empty-text")
+
+        return title, meta, html.Div(
+            [reading_tile(f"Avg {avg_label(avg['parameter'])}",
+                          round(avg['value'], display_decimals(avg['parameter'])), avg.get('unit'))
+             for avg in stats["averages"]],
+            className="reading-tiles"
         )
-        return title, content
 
     summary = get_measurement_summary(sensor_name)
 
     if "error" in summary:
-        return sensor_name, html.P(summary["error"], className="text-danger")
+        return title, None, html.P(summary["error"], className="text-danger")
 
-    # Format location
     location = format_location(summary['latitude'], summary['longitude'])
 
     if "message" in summary:
-        content = html.Div(
-            [
-                html.Div(
-                    location,
-                    style={
-                        "text-align": "center",
-                        "font-size": "14px",
-                        "margin-bottom": "10px",
-                    }
-                ),
-                html.P(summary["message"], className="text-info")
-            ]
+        return title, hero_meta(sensor, location), html.Div(
+            "No readings yet. This sensor's data will appear here after its first report.", className="empty-text"
         )
-        return title, content
 
     # Prepare content dynamically based on the most recent measurements
     recent_measurements = summary.get("most_recent_measurements", [])
 
     if not recent_measurements:
-        html.Div(
-            location,
-            style={
-                "text-align": "center",
-                "font-size": "14px",
-                "margin-bottom": "10px",
-            }
-        ),
-        return sensor_name, html.P("No data received yet.", className="text-warning")
+        return title, hero_meta(sensor, location), html.P("No data received yet.", className="empty-text")
 
-    tz_str = summary.get("timezone", "UTC")
-    try:
-        target_tz = pytz.timezone(tz_str)
-        utc_ts = recent_measurements[0]["timestamp"].replace(tzinfo=pytz.utc)
-        local_ts = utc_ts.astimezone(target_tz)
-        timestamp_str = local_ts.strftime("%a %b %d, %H:%M")
-        timestamp_str = f"Last report: {timestamp_str} ({tz_str})"
-    except:
-        timestamp_str = str(recent_measurements[0]["timestamp"])
-        timestamp_str = f"Last report: {timestamp_str} ({tz_str})"
+    latest = recent_measurements[0]["timestamp"]
+    day = load_series(sensor_name, latest - timedelta(hours=24), latest)
 
+    tiles = []
+    for measurement in recent_measurements:
+        name = measurement['name']
+        history = day.get(name, {})
+        tiles.append(reading_tile(
+            parameter_label(name), round(measurement['value'], display_decimals(name)), measurement['unit'],
+            values=history.get("values"), timestamps=history.get("timestamps"),
+            is_water_level=name == "water_level"
+        ))
 
-    # Format the content with parameters and values
-    parameter_list = reading_tiles([
-        (parameter_label(measurement['name']),
-         round(measurement['value'], display_decimals(measurement['name'])), measurement['unit'])
-        for measurement in recent_measurements
-    ])
-
-    # Combine the timestamp and parameters
-    content = html.Div(
-        [
-            html.Div(
-                timestamp_str,
-                style={
-                    "text-align": "center",
-                    "font-weight": "bold"
-                },
-            ),
-            html.Div(
-                location,
-                style={
-                    "text-align": "center",
-                    "font-size": "14px",
-                    "margin-bottom": "10px",
-                }
-            ),
-            parameter_list,
-        ]
+    return title, hero_meta(sensor, location, latest), html.Div(
+        [html.Div(tiles, className="reading-tiles"), quality_panel(sensor_name)]
     )
 
-    return title, content
-
-# ----------------------------
-# Past Locations
-# ----------------------------
 @callback(
     [Output("date-range-radio", "style"),
      Output("historic-controls-container", "style"),
@@ -669,6 +748,7 @@ def toggle_controls(deploy_data):
     end = parse_date(deploy_data['end_iso']) if deploy_data.get('end_iso') else datetime.utcnow()
 
     min_ts, max_ts = int(start.timestamp()), int(end.timestamp())
+    first_shown = max(min_ts, max_ts - int(PLAYBACK_DEFAULT.total_seconds()))
 
     marks = {
         min_ts: {"label": start.strftime("%b %d"), "style": {"transform": "translate(0, 5px)", "whiteSpace": "nowrap"}},
@@ -677,7 +757,7 @@ def toggle_controls(deploy_data):
     }
 
     # Return everything, ensuring tooltip remains hidden
-    return {"display": "none"}, {"display": "block"}, min_ts, max_ts, marks, [min_ts, max_ts], hidden_tooltip
+    return {"display": "none"}, {"display": "block"}, min_ts, max_ts, marks, [first_shown, max_ts], hidden_tooltip
 
 @callback(
     Output("slider-date-label", "children"),
@@ -703,7 +783,8 @@ def update_slider_label(value, drag_value):
 )
 def select_deployment(clicks, sensor_name):
     trigger = ctx.triggered_id
-    if not trigger or not isinstance(trigger, dict):
+    # The list being drawn also fires this, so only a real click counts
+    if not trigger or not isinstance(trigger, dict) or not any(clicks):
         raise PreventUpdate
 
     index = trigger['index']

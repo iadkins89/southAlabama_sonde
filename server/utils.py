@@ -5,11 +5,41 @@ import base64
 from PIL import Image, ImageOps
 from collections import defaultdict
 import dash_bootstrap_components as dbc
-from dash import html
+from dash import dcc, html
 import dash_leaflet as dl
 from dateutil.parser import parse as parse_date
 
 BATTERY_MIN_V = 3.4  # Where the health panel's battery bar starts
+
+
+def parameter_label(parameter):
+    if parameter.lower() == "ph":
+        return "pH"
+    return parameter.replace("_", " ").capitalize()
+
+
+def sensor_label(sensor_name):
+    return sensor_name.replace("_", " ").title()
+
+
+def device_type_label(device_type):
+    return device_type.replace("_", " ").title() if device_type else "Sensor"
+
+
+def display_decimals(parameter):
+    # Tides here are a few tenths of a metre, which 1 decimal would flatten.
+    return 3 if parameter.startswith("water_level") else 1
+
+
+def sensor_state(sensor):
+    if not sensor.get('active', False):
+        return "deactivated"
+    return "online" if sensor.get('is_online', False) else "offline"
+
+
+def relative_time(moment):
+    """A time that assets/app.js keeps up to date, such as "5 min ago"."""
+    return html.Span(moment.strftime("%b %d, %H:%M UTC"), **{"data-time": moment.isoformat() + "Z"})
 
 CARTO_API_KEY = os.environ.get("CARTO_API_KEY")
 
@@ -236,25 +266,14 @@ def create_map_markers(selected_sensor_name=None, show_inactive=False, hide_sele
         if lat is None or lon is None:
             continue
 
-        header_style = {}
-        button_style = {"color": "white", "width": "100%"}
-
         if not is_active:
             status_text = "Deactivated"
-            header_class = "text-white p-2"
-            header_style = {"backgroundColor": "#b5b3b3"}
-            button_color = "light"
-            button_style.update({"backgroundColor": "#b5b3b3", "borderColor": "#b5b3b3"})
             marker_class = "inactive-marker"
         elif is_online:
             status_text = "Online"
-            header_class = "text-white bg-primary p-2"
-            button_color = "primary"
             marker_class = "online-marker"
         else:
             status_text = "Offline"
-            header_class = "text-white bg-secondary p-2"
-            button_color = "primary"
             marker_class = "offline-marker"
 
         if s_type == "tide_gauge":
@@ -286,22 +305,17 @@ def create_map_markers(selected_sensor_name=None, show_inactive=False, hide_sele
 
         display_type = s_type.replace('_', ' ').title() if s_type else 'Unknown'
 
-        popup_content = dbc.Card([
-            dbc.CardHeader(name, className=header_class, style=header_style),
-            dbc.CardBody([
-                html.P(f"Type: {display_type}", className="small mb-1"),
-                html.P(f"Status: {status_text}", className="small mb-2 fw-bold"),
-
-                dbc.Button(
-                    "View Dashboard",
-                    href=f"/dashboard?sensor={name}",  # Standardized Query String
-                    size="sm",
-                    color=button_color,
-                    className="w-100",
-                    style=button_style
-                )
-            ], className="p-2")
-        ], className="border-0", style={"minWidth": "200px"})
+        last_report = s.get('last_report')
+        popup_content = html.Div([
+            html.Div([html.Span(className=f"status-dot status-{sensor_state(s)}"), sensor_label(name)],
+                     className="map-popup-title"),
+            html.Div(f"{display_type} \u00B7 {status_text}", className="map-popup-meta"),
+            html.Div(["Last report ", relative_time(last_report)] if last_report else "No data yet",
+                     className="map-popup-meta"),
+            # Set here because Leaflet recolors every link inside a popup
+            dcc.Link("View Dashboard", href=f"/dashboard?sensor={name}", className="map-popup-link",
+                     style={"color": "#ffffff", "backgroundColor": "#0b3d63"}),
+        ], className="map-popup")
 
         markers.append(
             dl.Marker(
@@ -319,91 +333,105 @@ def create_map_markers(selected_sensor_name=None, show_inactive=False, hide_sele
     return markers, map_center, map_zoom
 
 
+def sensor_row(sensor):
+    """One sensor in the home page list, with its status and newest reading."""
+    from server.models import get_most_recent
+
+    name = sensor['name']
+    type_label = device_type_label(sensor.get('device_type'))
+    state = sensor_state(sensor)
+    last_report = sensor.get('last_report')
+
+    headline = None
+    if sensor.get('active'):
+        readings = {row[1]: row for row in get_most_recent(name)}
+        for wanted in ("water_level", "temperature"):
+            if wanted in readings:
+                data, parameter, unit = readings[wanted]
+                headline = f"{round(data.value, display_decimals(parameter))} {unit or ''}".strip()
+                break
+
+    row = dcc.Link(
+        [
+            html.Span(className=f"status-dot status-{state}"),
+            html.Div(
+                [
+                    html.Div(sensor_label(name), className="sensor-row-name"),
+                    html.Div(
+                        [f"{type_label} \u00B7 ",
+                         relative_time(last_report) if last_report else "No data yet"],
+                        className="sensor-row-meta"
+                    ),
+                ],
+                className="sensor-row-text"
+            ),
+            html.Div(headline, className="sensor-row-value") if headline else None,
+        ],
+        href=f"/dashboard?sensor={name}",
+        className="sensor-row",
+    )
+    return html.Div(row, **{"data-search": f"{name} {type_label}".replace("_", " ").lower()})
+
+
 def create_instructions_card():
-    from server.models import get_all_sensors
-    sensors = get_all_sensors()
+    from server.models import get_network_summary
+    network = get_network_summary()
+    sensors = network['sensors']
 
     # Filter sensors based on explicit user intent (Active vs Deactivated)
     active_sensors = [s for s in sensors if s.get('active', False)]
     deactivated_sensors = [s for s in sensors if not s.get('active', False)]
+    active_sensors.sort(key=lambda s: (not s.get('is_online', False), s['name']))
 
-    # Helper function to create a "Title + Subtitle" list
     def make_sensor_list(sensor_list):
         if not sensor_list:
-            return html.Div("No sensors found.", className="text-muted small p-2")
+            return html.Div("No sensors here yet.", className="sensor-list-empty")
+        return html.Div([sensor_row(s) for s in sensor_list], className="sensor-list")
 
-        list_items = []
-        for s in sensor_list:
-            s_type = s.get('device_type')
-            display_type = s_type.replace('_', ' ').title() if s_type else 'Unknown'
-            name = s.get('name', 'Unknown')
+    def stat(value, label):
+        return html.Div([html.Div(value, className="network-stat-value"),
+                         html.Div(label, className="network-stat-label")], className="network-stat")
 
-            is_active = s.get('active', False)
-            is_online = s.get('is_online', False)
-
-            if not is_active:
-                dot_class = "bi bi-circle-fill text-secondary"  # Gray for deactivated
-            elif is_online:
-                dot_class = "bi bi-circle-fill text-success"  # Green for online
-            else:
-                dot_class = "bi bi-circle-fill text-secondary"
-
-            item = dbc.ListGroupItem(
-                html.A(
-                    [
-                        # The Status Dot
-                        html.Div(
-                            html.I(className=dot_class, style={"fontSize": "0.6rem"}),
-                            className="me-3 d-flex align-items-center"
-                        ),
-                        html.Div(
-                            [
-                                html.Span(name, className="fw-bold text-dark me-2",
-                                          style={"fontSize": "0.9rem"}),
-                                html.Span(f"({display_type})", className="text-muted small",
-                                          style={"fontSize": "0.75rem", "paddingTop": "2px"})
-                            ],
-                            className="d-flex align-items-center flex-wrap"
-                        )
-                    ],
-                    # Link setup
-                    href=f"/dashboard?sensor={name}",
-                    className="text-decoration-none d-flex align-items-center w-100"
-                ),
-                className="p-2 border-0 border-bottom sensor-list-item",
-                action=True
-            )
-            list_items.append(item)
-
-        return dbc.ListGroup(list_items, flush=True)
+    latest = network['latest_report']
 
     return dbc.Card(
         [
             dbc.CardHeader(
                 html.Div([
-                    html.Span([
-                        html.I(className="bi bi-hdd-network me-2"),
-                        "Sensor Network"
-                    ], className="fw-bold"),
+                    html.Div([
+                        html.Div("Sensor network", className="network-title"),
+                        html.Div("Live coastal monitoring", className="network-subtitle"),
+                    ]),
 
                     # Toggle Button
                     dbc.Button(
-                        "▼",
+                        "\u25B2",
                         id="toggle-instructions",
                         color="link",
                         size="sm",
-                        className="p-0 text-white text-decoration-none",
-                        style={"fontSize": "1.2rem", "lineHeight": "1"}
+                        className="network-toggle",
                     )
                 ], className="d-flex justify-content-between align-items-center"),
-                className="bg-primary text-white",
-                style={"cursor": "move"}
             ),
 
             # Collapsible Body
             dbc.Collapse(
                 dbc.CardBody(
                     [
+                        html.Div(
+                            [
+                                stat(f"{network['online']} of {network['active']}", "Reporting"),
+                                stat(f"{network['reports_24h']:,}", "Reports, last 24 h"),
+                                stat(relative_time(latest) if latest else "\u2014", "Latest report"),
+                            ],
+                            className="network-stats"
+                        ),
+                        html.Div(
+                            [html.I(className="bi bi-search"),
+                             dcc.Input(id="sensor-filter", type="text", placeholder="Filter sensors",
+                                       className="sensor-filter-input", debounce=False)],
+                            className="sensor-filter"
+                        ),
                         dbc.Accordion(
                             [
                                 dbc.AccordionItem(
@@ -413,24 +441,13 @@ def create_instructions_card():
                                 ),
                                 dbc.AccordionItem(
                                     [
-                                        dbc.Row(
+                                        html.Div(
                                             [
-                                                dbc.Col(html.Span("Show on Map",
-                                                                  className="small text-muted fw-bold",
-                                                                  style={"fontSize": "10px"}),
-                                                        className="p-0"
-                                                        ),
-                                                dbc.Col(
-                                                    dbc.Switch(
-                                                        id="show-inactive-switch",
-                                                        value=False,
-                                                        className="d-flex justify-content-end",
-                                                        style={"minHeight": "unset"}
-                                                    )
-                                                )
+                                                html.Span("Show on map"),
+                                                dbc.Switch(id="show-inactive-switch", value=False,
+                                                           className="m-0")
                                             ],
-                                            className="mb-2 g-0 border-bottom pb-2 align-items-center mx-1",
-                                            style={"marginTop": "-15px", "paddingTop": "0px"}
+                                            className="inactive-switch-row"
                                         ),
                                         # The list of deactivated sensors follows the toggle
                                         make_sensor_list(deactivated_sensors)
@@ -439,27 +456,19 @@ def create_instructions_card():
                                     item_id="offline-item"
                                 ),
                             ],
+                            id="sensor-accordion",
                             flush=True,
-                            start_collapsed=True,
                             always_open=True,
+                            start_collapsed=True,  # Desktop opens Active, see callbacks/clientside.py
                             className="sensor-accordion"
-                        )
+                        ),
                     ],
                     className="p-0"
                 ),
                 id="instructions-body",
-                is_open=True
-            )
+                is_open=False,  # Desktop opens it, see callbacks/clientside.py
+            ),
         ],
         id="instructions-card",
-        style={
-            "position": "absolute",
-            "top": "20px",
-            "left": "20px",
-            "width": "300px",
-            "zIndex": "1050",
-            "boxShadow": "0 4px 12px rgba(0,0,0,0.15)",
-            "maxHeight": "80vh",
-            "overflowY": "auto"
-        },
+        className="network-card",
     )

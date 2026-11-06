@@ -3,6 +3,7 @@ import os
 
 from flask import request, jsonify
 from .models import (SensorData,
+                     get_all_sensors,
                      get_sensor_by_name,
                      HEALTH_PARAMS,
                      get_or_create_parameter)
@@ -29,6 +30,14 @@ def ingest_token_ok():
 def setup_routes(server):
     if not os.environ.get("INGEST_TOKEN"):
         print("WARNING: INGEST_TOKEN is not set, so /receive_data accepts packets from anyone")
+
+    @server.route('/api/sensors')
+    def list_sensors():
+        """Sensor names and status, for the search in the navigation bar."""
+        return jsonify([
+            {key: sensor[key] for key in ('name', 'device_type', 'active', 'is_online')}
+            for sensor in get_all_sensors()
+        ])
 
     @server.route('/receive_data', methods=['POST'])
     def receive_data():

@@ -302,10 +302,43 @@ def get_all_sensors():
             "longitude": s.longitude,
             "device_type": s.device_type,
             "active": s.active,
-            "is_online": is_online
+            "is_online": is_online,
+            "last_report": latest_pings.get(s.id)
         })
 
     return results
+
+def get_network_summary():
+    """Sensor counts and the last day's reading count, for the home page."""
+    sensors = get_all_sensors()
+    active = [s for s in sensors if s['active']]
+    reports = [s['last_report'] for s in active if s['last_report']]
+    since = datetime.utcnow() - timedelta(hours=24)
+    return {
+        "sensors": sensors,
+        "active": len(active),
+        "online": sum(s['is_online'] for s in active),
+        # One packet stores many values, so a report is one sensor at one time
+        "reports_24h": db.session.query(SensorData.sensor_id, SensorData.timestamp).filter(
+            SensorData.timestamp >= since).distinct().count(),
+        "latest_report": max(reports) if reports else None,
+    }
+
+def get_qc_counts(sensor_name, days=7):
+    """How many readings got each QC flag, over the sensor's latest few days."""
+    sensor = get_sensor_by_name(sensor_name)
+    if not sensor:
+        return {}
+    latest = db.session.query(func.max(SensorData.timestamp)).filter(
+        SensorData.sensor_id == sensor.id, SensorData.qc_flag.isnot(None)).scalar()
+    if not latest:
+        return {}
+    rows = db.session.query(SensorData.qc_flag, func.count(SensorData.id)).filter(
+        SensorData.sensor_id == sensor.id,
+        SensorData.qc_flag.isnot(None),
+        SensorData.timestamp >= latest - timedelta(days=days)
+    ).group_by(SensorData.qc_flag).all()
+    return dict(rows)
 
 def get_sensors_grouped_by_type():
     sensors = get_all_sensors()

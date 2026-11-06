@@ -14,7 +14,7 @@ def layout():
 
     layout = dbc.Container([
         dcc.Store(id="sensor-active-status-store"),
-        html.H2("Update Existing Sensor", className="text-center mt-4"),
+        html.H1("Update a sensor", className="form-title mt-2"),
         dbc.Button("\u2190 Back", href="/onboarding", color="secondary", outline=True, size="sm", className="mb-4"),
         dbc.Form([
             dbc.Row([
@@ -26,7 +26,7 @@ def layout():
                 ), width=12, sm=8),
             ], className="mb-3"),
 
-            html.Div(id="form-container", children=[
+            html.Div(id="form-container", style={"display": "none"}, children=[
                 dbc.Row([
                     dbc.Col(dbc.Label("Device Name", className="text-start"), width=12, sm=4),
                     dbc.Col(dbc.Input(type="text", id="update-device-name", placeholder="Enter device name"), width=12, sm=8),
