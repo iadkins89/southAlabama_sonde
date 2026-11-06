@@ -241,6 +241,6 @@ def layout(sensor=None, **other_unknown_query_strings):
             id="multi-sensor-graph",
             className="g-4",
         )
-    ], fluid=False, className="dash-container")
+    ], fluid=False, className="dash-container pt-3")
 
     return layout

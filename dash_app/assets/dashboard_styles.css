@@ -136,3 +136,52 @@
     font-size: 14px;  /* Optional: Set font size */
     font-weight: bold;  /* Optional: Set font weight */
 }
+
+/* Latest readings on the sensor card */
+.reading-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.5rem;
+}
+
+.reading-tile {
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+}
+
+.reading-label {
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+.reading-value {
+    font-size: 1.15rem;
+    font-weight: 600;
+    line-height: 1.2;
+    color: #154360;
+}
+
+.reading-unit {
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: #6c757d;
+}
+
+/* The newest reading blinks while a sensor is live. Plotly positions points with a
+   transform, so only opacity can be animated here. The color matches LIVE_COLOR. */
+.js-plotly-plot .scatterlayer path.point[style*="rgb(220, 53, 69)"] {
+    animation: live-blink 1.6s ease-in-out infinite;
+}
+
+@keyframes live-blink {
+    50% {
+        opacity: 0.15;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .js-plotly-plot .scatterlayer path.point[style*="rgb(220, 53, 69)"] {
+        animation: none;
+    }
+}

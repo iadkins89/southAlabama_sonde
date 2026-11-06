@@ -137,6 +137,8 @@ def get_measurement_summary(sensor_name, include_health=False):
         if p_name == "latitude" or p_name == "longitude":
             continue
         summary_list.append({
+            "name": p_name,
+            "unit": p_unit,
             "parameter": f"{p_name} {f'({p_unit})' if p_unit else ''}",
             "value": data_obj.value,
             "timestamp": data_obj.timestamp
@@ -201,7 +203,7 @@ def get_deployment_statistics(sensor_name, deploy_data):
 
     return stats
 
-def create_map_markers(selected_sensor_name=None, show_inactive=False):
+def create_map_markers(selected_sensor_name=None, show_inactive=False, hide_selected=False):
     """
     Generates map markers.
     If selected_sensor_name is provided, it zooms in on that sensor and makes it bigger.
@@ -224,6 +226,9 @@ def create_map_markers(selected_sensor_name=None, show_inactive=False):
 
         # Highlight Logic
         is_selected = (name == selected_sensor_name)
+
+        if is_selected and hide_selected:
+            continue
 
         if not is_active and not show_inactive and not is_selected:
             continue

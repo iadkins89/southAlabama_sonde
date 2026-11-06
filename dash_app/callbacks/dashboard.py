@@ -16,6 +16,7 @@ from server.qc import SUSPECT
 
 # Longer than this between water levels draws as a break in the line, not a bridge.
 GAUGE_GAP = timedelta(minutes=15)
+LIVE_COLOR = "#dc3545"
 
 # The 1 year view sends each block's low and high instead of every reading, until
 # a zoom brings the span down to this length.
@@ -47,6 +48,29 @@ def format_location(latitude, longitude):
     north_south = "N" if latitude >= 0 else "S"
     east_west = "W" if longitude < 0 else "E"
     return f"{abs(latitude)}\u00B0{north_south}   {abs(longitude)}\u00B0{east_west}"
+
+
+def parameter_label(parameter):
+    if parameter.lower() == "ph":
+        return "pH"
+    return parameter.replace("_", " ").capitalize()
+
+
+def sensor_label(sensor_name):
+    return sensor_name.replace("_", " ").title()
+
+
+def reading_tiles(readings):
+    """One tile per (label, value, unit), for the sensor card."""
+    return html.Div(
+        [html.Div(
+            [html.Div(label, className="reading-label"),
+             html.Div([value, html.Span(f" {unit}" if unit else "", className="reading-unit")],
+                      className="reading-value")],
+            className="reading-tile"
+        ) for label, value, unit in readings],
+        className="reading-tiles"
+    )
 
 
 def display_decimals(parameter):
@@ -205,29 +229,20 @@ def build_figure(sensor_name, parameter, values, radio, thin, show_live):
             hovertemplate=f'%{{y:{hover_format}}} {unit} (suspect)<extra></extra>'
         ))
 
-    # Live Indicators (Only if active)
+    # Live Indicator (Only if active). dashboard_styles.css blinks points in LIVE_COLOR,
+    # and the halo must share that color to blink with the dot.
     if show_live:
         last_time = timestamps[-1]
         last_val = readings[-1]
-        # Halo (Glow)
         trace_data.append(go.Scatter(
             x=[last_time], y=[last_val], mode="markers",
-            marker={"color": "rgba(220, 53, 69, 0.3)", "size": 25, "line": {"width": 0}},
+            marker={"color": LIVE_COLOR, "opacity": 0.3, "size": 25, "line": {"width": 0}},
             hoverinfo="skip"
         ))
-        # Red Dot
         trace_data.append(go.Scatter(
-            x=[last_time], y=[last_val],
-            mode="markers+text",
-            marker={"color": "#dc3545", "size": 12, "line": {"width": 2, "color": "white"}},
-            hoverinfo="skip",  # The Line tooltip already covers this point.
-            text=["Live"],
-            textposition="middle right",
-            textfont=dict(
-                color="#dc3545",
-                size=12,
-                family="Arial Black, sans-serif"
-            ),
+            x=[last_time], y=[last_val], mode="markers",
+            marker={"color": LIVE_COLOR, "size": 12, "line": {"width": 2, "color": "white"}},
+            hoverinfo="skip"  # The Line tooltip already covers this point.
         ))
 
     return {
@@ -240,7 +255,7 @@ def build_figure(sensor_name, parameter, values, radio, thin, show_live):
                 "linecolor": "#dcdcdc", "showline": True
             },
             yaxis={
-                "title": f"{parameter.replace('_', ' ').capitalize()}{f' ({unit})' if unit else ''}",
+                "title": f"{parameter_label(parameter)}{f' ({unit})' if unit else ''}",
                 "range": [min_y - y_padding, max_y + y_padding],
                 "showgrid": True, "gridcolor": "#f0f0f0",
             },
@@ -291,7 +306,7 @@ def update_multi_sensor_graph(radio, slider, sensor_name, deploy_data, live_data
                 'displaylogo': False
             },
         )
-        graphs.append(dbc.Col(graph, xs=12, sm=12, md=12, lg=12))
+        graphs.append(dbc.Col(dbc.Card(graph, className="shadow-sm border-0"), xs=12, sm=12, md=12, lg=12))
     return graphs
 
 
@@ -505,11 +520,8 @@ def update_summary_from_url(sensor_name, live_data, deploy_data):
         return "No Sensor Found", html.P("No sensor data was found.", className="text-warning")
 
     # Format Title
-    title_name = sensor_name + " " + "Information"
-    title_name = title_name.title()
-
     title = html.Div(
-        title_name,
+        sensor_label(sensor_name),
         style={
             "text-align": "center",
             "font-weight": "bold"
@@ -525,37 +537,23 @@ def update_summary_from_url(sensor_name, live_data, deploy_data):
             return title, html.P(stats["error"], className="text-danger text-center small")
 
         location = format_location(stats['latitude'], stats['longitude'])
-        stat_rows = []
-
         if stats["averages"]:
-            for avg in stats["averages"]:
-                formatted_unit = f"({avg['unit']})" if avg.get('unit') else ""
-                display_name = f"Avg {avg['parameter'].replace('_', ' ').title()} {formatted_unit}"
-
-                # Matches the Live View format exactly could refactor this later
-                stat_rows.append(
-                    dbc.Row(
-                        [
-                            dbc.Col(html.Div(display_name, style={'text-align': 'left', 'font-size': '14px'}), width=9),
-                            dbc.Col(html.Div(f"{round(avg['value'], display_decimals(avg['parameter']))}",
-                                             style={'text-align': 'right', 'font-size': '14px'}), width=3),
-                        ]
-                    )
-                )
+            parameter_list = reading_tiles([
+                (f"Avg {parameter_label(avg['parameter']).lower()}",
+                 round(avg['value'], display_decimals(avg['parameter'])), avg.get('unit'))
+                for avg in stats["averages"]
+            ])
         else:
-            stat_rows = [html.P("No data available for this period.", className="text-warning text-center small")]
-
-        parameter_list = html.Div(
-            stat_rows,
-            style={"list-style-type": "none", "padding": "0", "margin": "0"}
-        )
+            parameter_list = html.P("No data available for this period.", className="text-warning text-center small")
 
         content = html.Div(
             [
                 html.Div("Archived View", className="badge bg-warning text-dark mb-2 d-table mx-auto"),
+                # If the line is too narrow, the duration moves down whole instead of splitting
                 html.Div(
-                    f"{stats['range']} ({stats['duration']})",
-                    style={"text-align": "center", "font-weight": "bold"},
+                    [html.Span(stats['range'], style={"white-space": "nowrap"}), " ",
+                     html.Span(f"({stats['duration']})", style={"white-space": "nowrap"})],
+                    style={"text-align": "center", "font-weight": "bold", "font-size": "0.9rem"},
                 ),
                 html.Div(
                     location,
@@ -610,25 +608,18 @@ def update_summary_from_url(sensor_name, live_data, deploy_data):
         utc_ts = recent_measurements[0]["timestamp"].replace(tzinfo=pytz.utc)
         local_ts = utc_ts.astimezone(target_tz)
         timestamp_str = local_ts.strftime("%a %b %d, %H:%M")
-        timestamp_str = f"{timestamp_str} ({tz_str})"
+        timestamp_str = f"Last report: {timestamp_str} ({tz_str})"
     except:
         timestamp_str = str(recent_measurements[0]["timestamp"])
-        timestamp_str = f"{timestamp_str} ({tz_str})"
+        timestamp_str = f"Last report: {timestamp_str} ({tz_str})"
 
 
     # Format the content with parameters and values
-    parameter_list = html.Div(
-        [
-            dbc.Row(
-                [
-                    dbc.Col(html.Div(measurement['parameter'].replace("_", " "), style={'text-align': 'left', 'font-size': '14px'}), width=9),
-                    dbc.Col(html.Div(f"{round(measurement['value'], display_decimals(measurement['parameter']))}", style={'text-align': 'right', 'font-size': '14px'}), width=3),
-                ]
-            )
-            for measurement in recent_measurements
-        ],
-        style={"list-style-type": "none", "padding": "0", "margin": "0"}
-    )
+    parameter_list = reading_tiles([
+        (parameter_label(measurement['name']),
+         round(measurement['value'], display_decimals(measurement['name'])), measurement['unit'])
+        for measurement in recent_measurements
+    ])
 
     # Combine the timestamp and parameters
     content = html.Div(
@@ -781,6 +772,9 @@ def update_map_view(deploy_data, sensor_name, show_inactive, current_viewport):
     sensor = get_sensor_by_name(sensor_name)
     s_type = sensor.device_type if sensor else None
 
+    # The other sensors stay on the map, and this deployment's marker replaces the sensor's own
+    other_markers, _, _ = create_map_markers(sensor_name, show_inactive=bool(show_inactive), hide_selected=True)
+
     if s_type == "tide_gauge":
         icon_file = "/assets/tide_gauge.svg"
     elif s_type == "wave_gauge":
@@ -802,4 +796,4 @@ def update_map_view(deploy_data, sensor_name, show_inactive, current_viewport):
         icon=icon_opts
     )]
 
-    return historic_marker, map_viewport([lat, lon], 12, current_viewport)
+    return other_markers + historic_marker, map_viewport([lat, lon], 12, current_viewport)
