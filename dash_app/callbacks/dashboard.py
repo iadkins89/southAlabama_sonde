@@ -40,6 +40,15 @@ def signal_color(value, good_above, poor_below):
     return "danger"
 
 
+def format_location(latitude, longitude):
+    # The letter replaces the sign, since -88.0°W would read as east.
+    if latitude is None or longitude is None:
+        return "Location unavailable"
+    north_south = "N" if latitude >= 0 else "S"
+    east_west = "W" if longitude < 0 else "E"
+    return f"{abs(latitude)}\u00B0{north_south}   {abs(longitude)}\u00B0{east_west}"
+
+
 def display_decimals(parameter):
     # Tides here are a few tenths of a metre, which 1 decimal would flatten.
     return 3 if parameter.startswith("water_level") else 1
@@ -492,6 +501,9 @@ def get_sensor_pic(sensor_name):
      Input("selected-deployment-store", "data")]
 )
 def update_summary_from_url(sensor_name, live_data, deploy_data):
+    if not sensor_name:
+        return "No Sensor Found", html.P("No sensor data was found.", className="text-warning")
+
     # Format Title
     title_name = sensor_name + " " + "Information"
     title_name = title_name.title()
@@ -504,9 +516,6 @@ def update_summary_from_url(sensor_name, live_data, deploy_data):
         },
     )
 
-    if not sensor_name:
-        return "No Sensor Found", html.P("No sensor data was found.", className="text-warning")
-
     # Past Deployment
     if deploy_data and not deploy_data.get('is_current', False):
 
@@ -515,7 +524,7 @@ def update_summary_from_url(sensor_name, live_data, deploy_data):
         if "error" in stats:
             return title, html.P(stats["error"], className="text-danger text-center small")
 
-        location = f"{stats['latitude']}\u00B0N   {stats['longitude']}\u00B0W"
+        location = format_location(stats['latitude'], stats['longitude'])
         stat_rows = []
 
         if stats["averages"]:
@@ -563,9 +572,7 @@ def update_summary_from_url(sensor_name, live_data, deploy_data):
         return sensor_name, html.P(summary["error"], className="text-danger")
 
     # Format location
-    latitude = str(summary['latitude']) + u'\N{DEGREE SIGN}' + 'N'
-    longitude = str(summary['longitude']) + u'\N{DEGREE SIGN}' + 'W'
-    location = latitude + "   " + longitude
+    location = format_location(summary['latitude'], summary['longitude'])
 
     if "message" in summary:
         content = html.Div(
