@@ -8,8 +8,11 @@ import dash_bootstrap_components as dbc
 from dash import dcc, html
 import dash_leaflet as dl
 from dateutil.parser import parse as parse_date
+from urllib.parse import quote
 
 BATTERY_MIN_V = 3.4  # Where the health panel's battery bar starts
+MARKER_SIZE = 36
+MARKER_SIZE_SELECTED = 54
 
 
 def parameter_label(parameter):
@@ -48,6 +51,42 @@ def upload_preview(image_data):
     return (html.Img(src=image_data, alt="Sensor photo preview", style={"maxHeight": "100%", "maxWidth": "100%"}),
             {**box, "height": "300px", "borderStyle": "solid", "display": "flex", "alignItems": "center",
              "justifyContent": "center", "overflow": "hidden"})
+
+
+# Symbols drawn on a 24 by 24 grid. Anything else uses the default.
+MARKER_SYMBOLS = {
+    "sonde": '<path d="M12 5.5C12 5.5 7.2 10.7 7.2 14.1a4.8 4.8 0 0 0 9.6 0C16.800 10.7 12 5.500 12 5.500Z" fill="#fff"/>',
+    "tide_gauge": '<path d="M12 4.800v9.200M9.200 7.600 12 4.800l2.800 2.800M9.200 11.200 12 14l2.800-2.800M5 18.200c2.300-2 4.700-2 7 0s4.700 2 7 0" '
+                  'fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    "wave_gauge": '<path d="M4.500 12c1.900-5 5.600-5 7.500 0s5.600 5 7.500 0" fill="none" stroke="#fff" '
+                  'stroke-width="2.600" stroke-linecap="round"/>',
+}
+DEFAULT_MARKER_SYMBOL = '<circle cx="12" cy="12" r="3.600" fill="#fff"/>'
+MARKER_STATUS_COLORS = {"online": "#1aa37a", "offline": "#8d9aa6", "deactivated": "#ffffff"}
+
+
+def marker_image(device_type, state=None):
+    """A sensor's map symbol as an image. The disc fills 24 of the 36 units, leaving a larger tap area."""
+    symbol = MARKER_SYMBOLS.get(device_type, DEFAULT_MARKER_SYMBOL)
+    status = ""
+    if state:
+        ring = ' stroke="#8d9aa6" stroke-width="1.800"' if state == "deactivated" else ' stroke="#fff" stroke-width="1.500"'
+        status = f'<circle cx="26.500" cy="9.500" r="3.800" fill="{MARKER_STATUS_COLORS[state]}"{ring}/>'
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36">'
+           '<circle cx="18" cy="18" r="12" fill="#0b3d63" stroke="#fff" stroke-width="1.500"/>'
+           f'<g transform="translate(6 6)">{symbol}</g>{status}</svg>')
+    return "data:image/svg+xml," + quote(svg)
+
+
+def marker_icon(device_type, state, class_name, selected=False):
+    size = MARKER_SIZE_SELECTED if selected else MARKER_SIZE
+    return {
+        "iconUrl": marker_image(device_type, state),
+        "iconSize": [size, size],
+        "iconAnchor": [size // 2, size // 2],
+        "popupAnchor": [0, -size // 3],
+        "className": class_name,
+    }
 
 
 def relative_time(moment):
@@ -289,32 +328,12 @@ def create_map_markers(selected_sensor_name=None, show_inactive=False, hide_sele
             status_text = "Offline"
             marker_class = "offline-marker"
 
-        if s_type == "tide_gauge":
-            icon_file = "/assets/tide_gauge.svg"
-        elif s_type == "wave_gauge":
-            icon_file = "/assets/wave_gauge.svg"
-        else:
-            icon_file = "/assets/buoy.svg"
-
         #Set icon size
         if is_selected:
             map_center = [lat, lon]
             map_zoom = 12
-            icon_size = [60, 60]
-            icon_anchor = [30, 30]
-            popup_anchor = [0, -30]
-        else:
-            icon_size = [30, 30]
-            icon_anchor = [15, 15]
-            popup_anchor = [0, -20]
 
-        icon_opts = {
-            "iconUrl": icon_file,
-            "iconSize": icon_size,
-            "iconAnchor": icon_anchor,
-            "popupAnchor": popup_anchor,
-            "className": marker_class
-        }
+        icon_opts = marker_icon(s_type, sensor_state(s), marker_class, selected=is_selected)
 
         display_type = s_type.replace('_', ' ').title() if s_type else 'Unknown'
 

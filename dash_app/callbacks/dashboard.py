@@ -3,7 +3,7 @@ from dash.exceptions import PreventUpdate
 import dash_bootstrap_components as dbc
 import plotly.graph_objs as go
 from datetime import datetime, timedelta
-from server.utils import (BATTERY_MIN_V, device_type_label, display_decimals, parameter_label, relative_time,
+from server.utils import (BATTERY_MIN_V, device_type_label, marker_icon, display_decimals, parameter_label, relative_time,
                           sensor_label)
 from server.utils import save_data_to_csv, get_measurement_summary,create_map_markers, get_deployment_statistics
 from server.models import (get_data,
@@ -902,25 +902,10 @@ def update_map_view(deploy_data, sensor_name, show_inactive, current_viewport):
     # The other sensors stay on the map, and this deployment's marker replaces the sensor's own
     other_markers, _, _ = create_map_markers(sensor_name, show_inactive=bool(show_inactive), hide_selected=True)
 
-    if s_type == "tide_gauge":
-        icon_file = "/assets/tide_gauge.svg"
-    elif s_type == "wave_gauge":
-        icon_file = "/assets/wave_gauge.svg"
-    else:
-        icon_file = "/assets/buoy.svg"
-
-    icon_opts = {
-        "iconUrl": icon_file,
-        "iconSize": [60, 60],
-        "iconAnchor": [30, 30],
-        "popupAnchor": [0, -30],
-        "className": "inactive-marker"
-    }
-
     historic_marker = [dl.Marker(
         position=[lat, lon],
         title=f"Historic: {sensor_name}",
-        icon=icon_opts
+        icon=marker_icon(s_type, "deactivated", "inactive-marker", selected=True)
     )]
 
     return other_markers + historic_marker, map_viewport([lat, lon], 12, current_viewport)
