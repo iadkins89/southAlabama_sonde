@@ -11,11 +11,15 @@ register_page(
     path='/dashboard'
 )
 
-def health_heading(title, title_class, value_id):
-    # The value sits beside the title because a weak reading's bar is too short to hold it.
+def bar_with_value(bar, value_id):
+    # The value is centered on the whole bar, because a weak reading's fill is too short to hold it.
     return html.Div(
-        [html.H5(title, className=title_class), html.Span(id=value_id, className="health-value")],
-        className="health-heading"
+        [bar, html.Span(id=value_id, style={
+            "position": "absolute", "inset": 0, "display": "flex", "alignItems": "center",
+            "justifyContent": "center", "fontSize": "0.8rem", "fontWeight": 600,
+            "color": "#212529", "pointerEvents": "none"
+        })],
+        style={"position": "relative"}
     )
 
 
@@ -86,17 +90,14 @@ def layout(sensor=None, **other_unknown_query_strings):
                                                         id="sensor-image",
                                                         src="/assets/no_image_available.png",  # Default placeholder
                                                         alt="Sensor Image",
-                                                        className="sensor-image img-fluid",
-                                                        style = {
-                                                            "maxHeight": "220px",
-                                                            "width": "100%",
-                                                            "objectFit": "contain",
-                                                            "display": "block",
-                                                            "margin": "0 auto"
+                                                        style={
+                                                            "display": "block", "width": "100%", "height": "100%",
+                                                            "objectFit": "cover", "borderRadius": "8px"
                                                         }
                                                     )
                                                 ],
-                                                className="image-container",
+                                                # Every sensor's image fills the same square, whatever its shape
+                                                style={"width": "220px", "height": "220px", "margin": "0 auto"},
                                             ),
                                         ], xs=12, md="auto"),
                                     ], className="align-items-center"
@@ -153,13 +154,22 @@ def layout(sensor=None, **other_unknown_query_strings):
 
                         dbc.Offcanvas(
                             html.Div([
-                                health_heading("Battery Level", "battery-label", "battery-value"),
-                                dbc.Progress(id="battery-gauge", value=75, animated=True, striped=True, color="success",
-                                             min=BATTERY_MIN_V, max=4.2, className="progress-bar"),
-                                health_heading("RSSI", "rssi-label", "rssi-value"),
-                                dbc.Progress(id="rssi-progress", value=50, color="warning", className="progress-bar"),
-                                health_heading("SNR", "snr-label", "snr-value"),
-                                dbc.Progress(id="snr-progress", value=30, color="danger", className="progress-bar"),
+                                html.H5("Battery Level", className="battery-label"),
+                                bar_with_value(
+                                    dbc.Progress(id="battery-gauge", value=75, animated=True, striped=True, color="success",
+                                                 min=BATTERY_MIN_V, max=4.2, className="progress-bar"),
+                                    "battery-value"
+                                ),
+                                html.H5("RSSI", className="rssi-label"),
+                                bar_with_value(
+                                    dbc.Progress(id="rssi-progress", value=50, color="warning", className="progress-bar"),
+                                    "rssi-value"
+                                ),
+                                html.H5("SNR", className="snr-label"),
+                                bar_with_value(
+                                    dbc.Progress(id="snr-progress", value=30, color="danger", className="progress-bar"),
+                                    "snr-value"
+                                ),
                                 html.Div([
                                     html.H5("Board Temperature", className="snr-label"),
                                     html.P(id="board-temp-value"),

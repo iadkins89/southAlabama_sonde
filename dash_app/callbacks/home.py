@@ -13,10 +13,19 @@ def toggle_card(n, is_open):
         return True, "▼"
 
 @callback(
-    Output("map-markers", "children"),
+    Output("show-inactive-switch", "value"),
+    Input("show-inactive-switch", "id"),  # Runs when the home page appears
+    State("show-inactive-store", "data")
+)
+def restore_inactive_switch(_, show_inactive):
+    return bool(show_inactive)
+
+@callback(
+    [Output("map-markers", "children"),
+     Output("show-inactive-store", "data")],
     Input("show-inactive-switch", "value"),
     prevent_initial_call=True
 )
 def toggle_inactive_sensors(show_inactive):
     markers, _, _ = create_map_markers(show_inactive=show_inactive)
-    return markers
+    return markers, show_inactive

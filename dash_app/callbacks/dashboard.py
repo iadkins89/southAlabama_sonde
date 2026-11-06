@@ -24,6 +24,8 @@ THIN_ABOVE = timedelta(days=31)
 
 
 # LoRa decodes signals far weaker than most radios, even below the noise floor (negative SNR).
+RSSI_BAR_MIN = -130
+RSSI_BAR_MAX = -50
 RSSI_GOOD_ABOVE = -100
 RSSI_POOR_BELOW = -115
 SNR_GOOD_ABOVE = -5
@@ -424,7 +426,7 @@ def update_sensor_health(sensor_name, live_data):
         rssi_label = "No RSSI data available"
         rssi_color = "secondary"
     else:
-        rssi_transformed = max(0, min(100, int((rssi + 120) * 100 / 120)))  # Map -120 to 0 dBm -> 0 to 100
+        rssi_transformed = max(0, min(100, int((rssi - RSSI_BAR_MIN) * 100 / (RSSI_BAR_MAX - RSSI_BAR_MIN))))
         rssi_color = signal_color(rssi, RSSI_GOOD_ABOVE, RSSI_POOR_BELOW)
         rssi_label = f"{rssi} dBm"
 
@@ -745,15 +747,16 @@ def map_viewport(center, zoom):
      Output("dashboard-map", "viewport")],
     [Input("selected-deployment-store", "data"),
      Input("sensor-name-store", "data")],
-    prevent_initial_call=True
+    State("show-inactive-store", "data"),  # Global, so as an Input it would fire on other pages
+    prevent_initial_call="initial_duplicate"
 )
-def update_map_view(deploy_data, sensor_name):
+def update_map_view(deploy_data, sensor_name, show_inactive):
 
     if not sensor_name:
         raise PreventUpdate
 
     if not deploy_data or deploy_data.get('is_current', True):
-        markers, map_center, map_zoom = create_map_markers(sensor_name)
+        markers, map_center, map_zoom = create_map_markers(sensor_name, show_inactive=bool(show_inactive))
         return markers, map_viewport(map_center, map_zoom)
 
     # Historic mode

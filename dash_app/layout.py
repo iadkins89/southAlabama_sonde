@@ -8,6 +8,8 @@ def get_layout():
         children=[
             dcc.Location(id="main-url", refresh=False),
             dcc.Store(id="sensor-update"),
+            # Whether the home page's switch shows deactivated sensors, kept in the browser
+            dcc.Store(id="show-inactive-store", storage_type="local"),
             html.Div(id="ws-trigger", style={"display": "none"}),
             create_menu(),
             dash.page_container,

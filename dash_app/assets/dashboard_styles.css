@@ -130,20 +130,6 @@
     border-radius: 0.3rem; /* Adjust border radius if needed */
 }
 
-/* A health reading's title and value, on one line above its bar */
-.health-heading {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 0.75rem;
-}
-
-.health-value {
-    font-size: 0.9rem;
-    font-weight: 600;
-    text-align: right;
-}
-
 /* Style for the label inside the progress bar */
 .progress-bar .progress-bar-label {
     color: #6c757d;  /* Soft gray color for the label text inside the progress bar */
