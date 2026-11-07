@@ -472,6 +472,23 @@ def get_most_recent(sensor_name, Lora = False):
 
     return recent_data
 
+def count_sensor_readings(sensor_id):
+    return SensorData.query.filter_by(sensor_id=sensor_id).count()
+
+
+def delete_sensor(sensor_id):
+    """Permanently removes a sensor and everything stored for it. Children go first."""
+    data_ids = db.session.query(SensorData.id).filter_by(sensor_id=sensor_id)
+    QcAssessment.query.filter(QcAssessment.sensor_data_id.in_(data_ids)).delete(synchronize_session=False)
+
+    for model in (SensorData, GaugeReading, GaugeDatum, QcConfig, LocationHistory):
+        model.query.filter_by(sensor_id=sensor_id).delete(synchronize_session=False)
+
+    db.session.execute(user_sensor_association.delete().where(user_sensor_association.c.sensor_id == sensor_id))
+    Sensor.query.filter_by(id=sensor_id).delete(synchronize_session=False)
+    db.session.commit()
+
+
 def update_gauge_datum(sensor_id, elevation, now):
     """Starts a new datum if the elevation changed. Past readings keep their old one."""
     current = GaugeDatum.query.filter_by(sensor_id=sensor_id, valid_to=None).first()

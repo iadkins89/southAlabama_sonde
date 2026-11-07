@@ -308,6 +308,22 @@ class Ingest(unittest.TestCase):
         self.assertTrue(rows(6))
         self.assertFalse(rows(7))
 
+    def test_deleting_a_gauge_removes_only_its_own_rows(self):
+        from server.models import (GaugeDatum, GaugeReading, LocationHistory, QcAssessment, QcConfig, SensorData,
+                                   create_or_update_sensor, delete_sensor, get_sensor_by_name)
+        create_or_update_sensor("other", 30.5, -87.9, "tide_gauge", navd88_elevation=3.0)
+        self.client.post("/receive_data", json=packet("other", self.t0))
+        self.send(0)
+        self.send(6)
+        models = (GaugeDatum, GaugeReading, LocationHistory, QcAssessment, QcConfig, SensorData)
+        other_rows = {"datum": 1, "reading": 1, "location": 1, "qc": 1, "config": 1, "data": 4}
+
+        delete_sensor(get_sensor_by_name("gauge").id)
+
+        self.assertIsNone(get_sensor_by_name("gauge"))
+        self.assertEqual([model.query.count() for model in models], list(other_rows.values()))
+        self.assertEqual(self.client.post("/receive_data", json=packet("gauge", self.t0)).status_code, 403)
+
     def test_csv_header_has_location_above_the_data(self):
         from server.models import get_data
         from server.utils import save_data_to_csv

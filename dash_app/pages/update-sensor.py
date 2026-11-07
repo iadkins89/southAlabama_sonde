@@ -98,9 +98,24 @@ def layout():
                     dbc.Col(dbc.Button("Deactivate", id="toggle-active-btn", color="danger", className="mt-3 w-100"),
                             width=12, sm=6),
                 ], className="d-flex justify-content-between mb-3"),
-                html.Div(id="update-submission-response", className="mt-3"),
-            ])
-        ], className="px-3 py-3")
+                dbc.Button("Delete this sensor", id="delete-sensor-btn", color="danger", outline=True,
+                           className="w-100"),
+            ]),
+            html.Div(id="update-submission-response", className="mt-3"),
+        ], className="px-3 py-3"),
+        dbc.Modal([
+            dbc.ModalHeader(dbc.ModalTitle("Delete this sensor?")),
+            dbc.ModalBody([
+                html.P(id="delete-sensor-warning"),
+                dbc.Label("Enter your password to confirm"),
+                dbc.Input(type="password", id="delete-sensor-password", autoComplete="current-password"),
+                html.Div(id="delete-sensor-error", className="text-danger mt-2"),
+            ]),
+            dbc.ModalFooter([
+                dbc.Button("Cancel", id="delete-cancel-btn", color="secondary", outline=True),
+                dbc.Button("Delete permanently", id="delete-confirm-btn", color="danger"),
+            ]),
+        ], id="delete-sensor-modal", is_open=False, centered=True),
     ], className="form-page")
 
     return layout
