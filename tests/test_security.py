@@ -143,6 +143,36 @@ class Security(unittest.TestCase):
         self.client.post("/_dash-update-component", json=update_sensor_call("update-submit-btn"))
         self.assertIsNotNone(self.sensor("renamed"))
 
+    def try_delete(self, password, logged_in=True):
+        from flask import session
+        from dash_app.callbacks.update_sensor import delete_error
+        from server.database import db
+        from server.models import User
+
+        user = User(username="tester")
+        user.set_password("right")
+        db.session.add(user)
+        db.session.commit()
+        with self.server.test_request_context():
+            session.update(user_logged_in=logged_in, user_id=user.id)
+            return delete_error("sonde", password)
+
+    def test_deleting_a_sensor_needs_a_login(self):
+        self.assertEqual(self.try_delete("right", logged_in=False), "Please log in again.")
+        self.assertIsNotNone(self.sensor("sonde"))
+
+    def test_deleting_a_sensor_needs_the_right_password(self):
+        self.assertEqual(self.try_delete("wrong"), "Incorrect password.")
+        self.assertIsNotNone(self.sensor("sonde"))
+
+    def test_an_empty_password_deletes_nothing(self):
+        self.assertEqual(self.try_delete(None), "Incorrect password.")
+        self.assertIsNotNone(self.sensor("sonde"))
+
+    def test_the_right_password_deletes_the_sensor(self):
+        self.assertIsNone(self.try_delete("right"))
+        self.assertIsNone(self.sensor("sonde"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,8 +1,18 @@
-from dash import callback, Input, Output, State, callback_context
-from server.models import get_sensor_by_name, create_or_update_sensor, get_all_sensors
+import time
+
+from dash import callback, Input, Output, State, callback_context, no_update
+from server.database import db
+from server.models import (User, count_sensor_readings, delete_sensor, get_sensor_by_name,
+                           create_or_update_sensor, get_all_sensors)
 from server.utils import upload_preview
 import dash_bootstrap_components as dbc
 from flask import session
+
+
+def sensor_options():
+    return [{'label': f"{s['name']} (Inactive)" if not s.get('active', True) else s['name'],
+             'value': s['name']} for s in get_all_sensors()]
+
 
 @callback(
     Output("select-device-dropdown", "options"),
@@ -10,9 +20,7 @@ from flask import session
 )
 def populate_sensor_dropdown(pathname):
     # This fires when the page loads
-    sensors = get_all_sensors()
-    return [{'label': f"{s['name']} (Inactive)" if not s.get('active', True) else s['name'],
-             'value': s['name']} for s in sensors]
+    return sensor_options()
 
 @callback(
     Output("form-container", "style"),
@@ -138,3 +146,67 @@ def update_sensor_information(submit_clicks, deactivate_clicks, original_name, n
         return dbc.Alert(msg, color="success")
 
     return ""
+
+
+@callback(
+    [Output("delete-sensor-modal", "is_open"),
+     Output("delete-sensor-warning", "children"),
+     Output("delete-sensor-password", "value"),
+     Output("delete-sensor-error", "children")],
+    [Input("delete-sensor-btn", "n_clicks"),
+     Input("delete-cancel-btn", "n_clicks")],
+    State("select-device-dropdown", "value"),
+    prevent_initial_call=True
+)
+def open_delete_dialog(open_clicks, cancel_clicks, selected_device):
+    sensor = get_sensor_by_name(selected_device)
+    if callback_context.triggered_id != "delete-sensor-btn" or not sensor:
+        return False, no_update, "", ""
+
+    readings = count_sensor_readings(sensor.id)
+    return (True,
+            f"This permanently deletes {sensor.name} and its {readings:,} stored values. This can't be undone.",
+            "", "")
+
+
+def delete_error(selected_device, password):
+    """Returns why the sensor can't be deleted, or None after deleting it."""
+    # The page checks the login too, but this callback can be called directly
+    if not session.get('user_logged_in'):
+        return "Please log in again."
+
+    user = db.session.get(User, session.get('user_id'))
+    if not user:
+        return "Please log in again."
+    if not password or not user.check_password(password):
+        return "Incorrect password."
+
+    sensor = get_sensor_by_name(selected_device)
+    if not sensor:
+        return f"Could not find sensor '{selected_device}'."
+
+    delete_sensor(sensor.id)
+    return None
+
+
+@callback(
+    [Output("delete-sensor-error", "children", allow_duplicate=True),
+     Output("delete-sensor-password", "value", allow_duplicate=True),
+     Output("delete-sensor-modal", "is_open", allow_duplicate=True),
+     Output("update-submission-response", "children", allow_duplicate=True),
+     Output("select-device-dropdown", "value"),
+     Output("select-device-dropdown", "options", allow_duplicate=True),
+     Output("sensor-update", "data", allow_duplicate=True)],
+    [Input("delete-confirm-btn", "n_clicks"),
+     Input("delete-sensor-password", "n_submit")],
+    [State("select-device-dropdown", "value"),
+     State("delete-sensor-password", "value")],
+    prevent_initial_call=True
+)
+def confirm_delete(n_clicks, n_submit, selected_device, password):
+    error = delete_error(selected_device, password)
+    if error:
+        return error, "", no_update, no_update, no_update, no_update, no_update
+
+    return ("", "", False, dbc.Alert(f"Sensor '{selected_device}' deleted.", color="success"), None,
+            sensor_options(), {"timestamp": time.time()})
