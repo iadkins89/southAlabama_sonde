@@ -1,6 +1,7 @@
 """
-Tide gauge ingest. Every packet is kept as sent in gauge_readings. Only
-water_level and the health values go on to sensor_data, which is what the
+Tide gauge ingest. A gauge with no NAVD88 elevation has no water level to
+report, so its packets are not stored. Otherwise every packet is kept as sent
+in gauge_readings. Only water_level and the health values go on to sensor_data, which is what the
 dashboard graphs, so the QC statistics are never plotted.
 """
 from dataclasses import dataclass, field
@@ -94,6 +95,7 @@ def begin_reading(sensor, payload):
     """
     Stores the raw packet and works out what to pass to the ingest loop. Only
     fields named here go any further, so a new codec field can't reach a graph.
+    A gauge with no elevation stops here, with nothing stored.
     Returns None if the packet isn't a valid tide gauge payload.
     """
     decoded = payload['measurements']
@@ -128,7 +130,12 @@ def begin_reading(sensor, payload):
     # The device sends a distance of 0 when it had nothing to average.
     has_distance = decoded['n_used'] > 0 and decoded['distance_mm'] > 0
     distance_mm = int(decoded['distance_mm']) if has_distance else None
-    datum = get_datum(sensor.id, timestamp) if time_ok else None
+
+    # A quarantined reading has no usable time, so check the gauge as it is now.
+    datum = get_datum(sensor.id, timestamp if time_ok else received_at)
+    if datum is None:
+        print(f"Warning: Tide gauge '{sensor.name}' has no NAVD88 elevation for {timestamp}; reading ignored.")
+        return PendingReading(stop_reason='Reading ignored: no NAVD88 elevation set')
 
     inserted = db.session.execute(
         insert(GaugeReading)
@@ -140,7 +147,7 @@ def begin_reading(sensor, payload):
                 rssi=decoded.get('rssi'), snr=decoded.get('snr'), status=status,
                 queue_depth=decoded.get('queue_depth'), backfill=backfill,
                 time_source=time_source, degraded=bool(decoded.get('degraded')), time_ok=time_ok,
-                datum_id=datum.id if datum else None)
+                datum_id=datum.id if time_ok else None)
         .on_conflict_do_nothing(index_elements=['sensor_id', 'mark_time'], index_where=GaugeReading.time_ok)
         .returning(GaugeReading.id)
     ).first()
@@ -167,11 +174,6 @@ def begin_reading(sensor, payload):
     pending = PendingReading(measurements=measurements, backfill=backfill)
 
     if distance_mm is None:
-        return pending
-
-    if datum is None:
-        print(f"Warning: Tide gauge '{sensor.name}' has no NAVD88 elevation for {timestamp}; "
-              "raw reading kept, water level not calculated.")
         return pending
 
     level_m = datum.elevation_m - distance_mm / 1000

@@ -179,6 +179,36 @@ class Ingest(unittest.TestCase):
         self.assertAlmostEqual(rows[0].value, 1.25)
         self.assertAlmostEqual(rows[1].value, 1.50)
 
+    def add_gauge_without_elevation(self):
+        from server.models import create_or_update_sensor
+        self.assertIn("successfully", create_or_update_sensor("no_datum", 30.5, -87.9, "tide_gauge"))
+
+    def assert_nothing_stored(self):
+        from server.models import GaugeReading, SensorData
+        self.assertEqual((GaugeReading.query.count(), SensorData.query.count()), (0, 0))
+
+    def test_gauge_without_elevation_stores_nothing(self):
+        self.add_gauge_without_elevation()
+        when = self.t0
+        for body in (packet("no_datum", when), packet("no_datum", when + timedelta(minutes=6), status=0x01),
+                     packet("no_datum", when + timedelta(minutes=12), status=0x08), compact_packet("no_datum")):
+            response = self.client.post("/receive_data", json=body)
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("no NAVD88 elevation", response.json["message"])
+        self.assert_nothing_stored()
+
+    def test_gauge_stores_readings_once_elevation_is_set(self):
+        from server.models import create_or_update_sensor, get_sensor_by_name
+        self.add_gauge_without_elevation()
+        self.client.post("/receive_data", json=packet("no_datum", self.t0))
+        self.assert_nothing_stored()
+
+        sensor = get_sensor_by_name("no_datum")
+        create_or_update_sensor(sensor.name, sensor.latitude, sensor.longitude, sensor.device_type,
+                                timezone=sensor.timezone, navd88_elevation=3.25)
+        self.client.post("/receive_data", json=packet("no_datum", self.t0 + timedelta(minutes=6), status=0x08))
+        self.assertEqual([round(row.value, 3) for row in self.rows()], [1.25])
+
     def test_unchanged_elevation_keeps_one_datum(self):
         from server.models import GaugeDatum, create_or_update_sensor, get_sensor_by_name
         sensor = get_sensor_by_name("gauge")
@@ -248,15 +278,35 @@ class Ingest(unittest.TestCase):
     def test_csv_times_are_in_the_sensor_timezone(self):
         from server.models import get_data
         from server.utils import save_data_to_csv
-        self.send(0)                              # 2027-03-01 12:00 UTC, standard time
-        self.t0 = datetime(2027, 7, 1, 12, 0)     # daylight saving time
+        self.send(0)                              # 2027-03-01 12:00 UTC, in winter
+        self.t0 = datetime(2027, 7, 1, 12, 0)     # In summer, still standard time
         self.send(0)
 
         rows = save_data_to_csv(get_data("gauge", datetime(2027, 1, 1), datetime(2028, 1, 1)),
                                 "gauge").splitlines()
-        self.assertTrue(rows[3].startswith("timestamp (America/Chicago)"))
+        self.assertTrue(rows[3].startswith("timestamp (CST)"))
         self.assertTrue(rows[4].startswith("2027-03-01 06:00:00,"))
-        self.assertTrue(rows[5].startswith("2027-07-01 07:00:00,"))
+        self.assertTrue(rows[5].startswith("2027-07-01 06:00:00,"))
+
+    def test_graph_times_do_not_repeat_when_the_clocks_go_back(self):
+        from dash_app.callbacks.dashboard import load_series
+        self.t0 = datetime(2026, 11, 1, 6, 54)    # 01:54 CDT, then the clock returns to 01:00
+        for minutes in (0, 6, 12):
+            self.send(minutes)
+
+        series = load_series("gauge", datetime(2026, 11, 1), datetime(2026, 11, 2))
+        self.assertEqual([t.strftime("%H:%M") for t in series["water_level"]["timestamps"]],
+                         ["00:54", "01:00", "01:06"])
+
+    def test_date_ranges_are_read_as_standard_time(self):
+        from server.models import get_data
+        self.t0 = datetime(2027, 7, 1, 12, 0)     # 06:00 CST
+        self.send(0)
+
+        def rows(hour):
+            return get_data("gauge", datetime(2027, 7, 1, hour), datetime(2027, 7, 1, hour, 59), localize_input=True)
+        self.assertTrue(rows(6))
+        self.assertFalse(rows(7))
 
     def test_csv_header_has_location_above_the_data(self):
         from server.models import get_data

@@ -112,7 +112,7 @@ def save_data_to_csv(data, sensor_name):
     from server.models import get_sensor_by_name, get_sensor_timezone, get_locations_for_range
     organized_data = defaultdict(dict)
 
-    timezone_str = get_sensor_timezone(sensor_name)
+    zone = get_sensor_timezone(sensor_name)
 
     for row in data:
         organized_data[row.timestamp][f"{row.name} {f'({row.unit})' if row.unit else ''}"] = row.value
@@ -122,12 +122,12 @@ def save_data_to_csv(data, sensor_name):
     # Create a DataFrame from the organized data
     df = pd.DataFrame.from_dict(organized_data, orient='index').reset_index()
 
-    # Timestamps are stored in UTC. Show them in the sensor's own timezone.
-    df['index'] = (pd.to_datetime(df['index'], utc=True).dt.tz_convert(timezone_str)
+    # Timestamps are stored in UTC. Show them in the sensor's standard time.
+    df['index'] = (pd.to_datetime(df['index'], utc=True).dt.tz_convert(zone)
                    .dt.strftime('%Y-%m-%d %H:%M:%S'))
 
     # Rename the first column to 'timestamp (timezone)'
-    formatted_time = f"timestamp ({timezone_str})"
+    formatted_time = f"timestamp ({zone})"
     df.rename(columns={'index': formatted_time}, inplace=True)
 
     # Convert the DataFrame to a CSV string

@@ -306,14 +306,10 @@ def graph_window(radio, slider, deploy_data):
 
 
 def load_series(sensor_name, start, end, only_parameter=None, localize_input=False):
-    """Returns the graphed values per parameter, in time order and in the sensor's timezone."""
+    """Returns the graphed values per parameter, in time order and in the sensor's standard time."""
     data = get_data(sensor_name, start, end, lora=False, localize_input=localize_input)
 
-    tz_str = get_sensor_timezone(sensor_name)
-    try:
-        target_tz = pytz.timezone(tz_str)
-    except:
-        target_tz = pytz.utc
+    target_tz = get_sensor_timezone(sensor_name)
 
     series = {}
     for row in data:
@@ -357,20 +353,25 @@ def build_figure(sensor_name, parameter, values, radio, thin, show_live):
     # NAVD88 levels can cross zero, so filling down to zero would mislead.
     area_style = {} if is_water_level else {"fill": "tozeroy", "fillcolor": "rgba(14, 143, 138, 0.10)"}  # Area chart style
 
+    # Hover shows the nearest point of every trace, so a tooltip on the markers
+    # would also appear on the readings beside them. The line reports it instead.
+    suspect_points = [(t, v) for t, v, flag in zip(timestamps, readings, values["flags"]) if flag == SUSPECT]
+    suspect_times = {t for t, _ in suspect_points}
+
     trace_data.append(go.Scatter(
         x=line_x,
         y=line_y,
+        customdata=[" (suspect)" if t in suspect_times else "" for t in line_x],
         mode="lines",
         name="History",
         # A curve through alternating lows and highs would overshoot both.
         line={"color": LINE_COLOR, "width": 1 if thin else 2,
               **({} if thin else {"shape": "spline", "smoothing": 0.3})},
         # <extra></extra> = removes the side box (name/icon)
-        hovertemplate=f'%{{y:{hover_format}}} {unit}<extra></extra>',
+        hovertemplate=f'%{{y:{hover_format}}} {unit}%{{customdata}}<extra></extra>',
         **area_style
     ))
 
-    suspect_points = [(t, v) for t, v, flag in zip(timestamps, readings, values["flags"]) if flag == SUSPECT]
     if suspect_points:
         suspect_x, suspect_y = zip(*suspect_points)
         trace_data.append(go.Scatter(
@@ -380,7 +381,7 @@ def build_figure(sensor_name, parameter, values, radio, thin, show_live):
             name="Suspect",
             marker={"color": SUSPECT_COLOR, "size": 9, "symbol": "diamond",
                     "line": {"width": 1, "color": "white"}},
-            hovertemplate=f'%{{y:{hover_format}}} {unit} (suspect)<extra></extra>'
+            hoverinfo="skip"
         ))
 
     # Live Indicator (Only if active). dashboard_styles.css blinks points in LIVE_COLOR,
@@ -501,7 +502,7 @@ def reload_year_graph_on_zoom(relayout, radio, slider, sensor_name, deploy_data)
         series = load_series(sensor_name, start, end, parameter)
         show_live = get_sensor_by_name(sensor_name).is_online
     elif "xaxis.range[0]" in relayout:
-        # The axis shows the sensor's local time
+        # The axis shows the sensor's standard time
         start = parse_date(relayout["xaxis.range[0]"])
         end = parse_date(relayout["xaxis.range[1]"])
         series = load_series(sensor_name, start, end, parameter, localize_input=True)

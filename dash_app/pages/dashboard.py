@@ -3,7 +3,7 @@ import dash_bootstrap_components as dbc
 from datetime import datetime
 import pytz
 import dash_leaflet as dl
-from server.models import get_past_deployments
+from server.models import get_past_deployments, get_sensor_timezone
 from server.utils import BATTERY_MIN_V, create_map_markers, get_carto_tile_url
 
 register_page(
@@ -131,7 +131,8 @@ def layout(sensor=None, **other_unknown_query_strings):
                     value="2-days",
                     style={"display": "inline-flex"}
                 ),
-                html.Div("Drag across a graph to zoom in. Double-click to zoom back out.", className="range-hint"),
+                html.Div(f"Drag across a graph to zoom in. Double-click to zoom back out. "
+                         f"Times are {get_sensor_timezone(sensor)} all year.", className="range-hint"),
             ], className="range-row"),
 
             # --- HISTORY CONTROLS (Slider) ---

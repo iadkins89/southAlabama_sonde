@@ -3,7 +3,8 @@ import math
 import unittest
 from datetime import datetime, timedelta
 
-from dash_app.callbacks.dashboard import GAUGE_GAP, THIN_BLOCKS, thin_line
+from dash_app.callbacks.dashboard import GAUGE_GAP, THIN_BLOCKS, build_figure, thin_line
+from server.qc import PASS, SUSPECT
 
 START = datetime(2026, 1, 1)
 STEP = timedelta(minutes=6)
@@ -48,6 +49,20 @@ class ThinLine(unittest.TestCase):
         break_at = y.index(None)
         self.assertEqual(x[break_at - 1], START + 19999 * STEP)
         self.assertEqual(x[break_at + 1], START + 20010 * STEP)
+
+
+class SuspectTooltip(unittest.TestCase):
+    def figure(self):
+        start = datetime(2026, 11, 1)
+        values = {"timestamps": [start + timedelta(minutes=6 * i) for i in range(3)], "values": [1.0, 1.1, 1.2],
+                  "flags": [PASS, SUSPECT, PASS], "unit": "m"}
+        return build_figure("gauge", "water_level", values, "1-week", thin=False, show_live=False)
+
+    def test_only_the_flagged_reading_says_suspect(self):
+        self.assertEqual(list(self.figure()["data"][0].customdata), ["", " (suspect)", ""])
+
+    def test_the_marker_adds_no_tooltip_of_its_own(self):
+        self.assertEqual(self.figure()["data"][1].hoverinfo, "skip")
 
 
 if __name__ == "__main__":

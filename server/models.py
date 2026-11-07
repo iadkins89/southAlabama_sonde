@@ -2,7 +2,7 @@ from server import db
 from sqlalchemy import Index, func, or_, text
 from sqlalchemy.orm import defer
 from sqlalchemy.dialects.postgresql import JSONB
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone as fixed_timezone
 import pytz
 from werkzeug.security import generate_password_hash, check_password_hash
 from server.qc import FAIL
@@ -265,11 +265,30 @@ def get_or_create_parameter(name):
         db.session.flush()
     return parameter
 
+def standard_time(timezone_name):
+    """
+    The timezone's standard time, ignoring daylight saving. One offset all year
+    means graphs and exports never repeat or skip an hour at a clock change.
+    """
+    try:
+        zone = pytz.timezone(timezone_name)
+    except pytz.UnknownTimeZoneError:
+        return fixed_timezone.utc
+
+    year = datetime.utcnow().year
+    for month in (1, 7):  # One of these is standard time in either hemisphere
+        moment = zone.localize(datetime(year, month, 1))
+        if not moment.dst():
+            return fixed_timezone(moment.utcoffset(), moment.tzname())
+    return fixed_timezone.utc
+
+
 def get_sensor_timezone(sensor_name):
+    """The standard time of the timezone picked for this sensor at onboarding."""
     sensor = get_sensor_by_name(sensor_name)
     if sensor and sensor.timezone:
-        return sensor.timezone
-    return 'UTC'
+        return standard_time(sensor.timezone)
+    return fixed_timezone.utc
 
 
 def get_all_sensors():
@@ -358,7 +377,7 @@ def get_data(sensor_name, start_date, end_date, lora=False, localize_input=False
             lora (bool): If True, LoRaWAN data (rssi, snr, and battery) are returned.
                          False, all other data is retrieved
             localize_input (bool): If True, assumes start_date/end_date are in the
-                                   SENSOR'S timezone. Converts them to UTC before querying.
+                                   sensor's standard time. Converts them to UTC before querying.
             include_failed (bool): If True, readings that failed QC are returned too.
                                    Exports use this so that nothing is silently lost.
         """
@@ -367,14 +386,11 @@ def get_data(sensor_name, start_date, end_date, lora=False, localize_input=False
         return []
 
     if localize_input and sensor.timezone:
-        try:
-            local_tz = pytz.timezone(sensor.timezone)
-            if start_date.tzinfo is None:
-                start_date = local_tz.localize(start_date).astimezone(pytz.utc).replace(tzinfo=None)
-            if end_date.tzinfo is None:
-                end_date = local_tz.localize(end_date).astimezone(pytz.utc).replace(tzinfo=None)
-        except:
-            pass
+        local_tz = standard_time(sensor.timezone)
+        if start_date.tzinfo is None:
+            start_date = start_date.replace(tzinfo=local_tz).astimezone(pytz.utc).replace(tzinfo=None)
+        if end_date.tzinfo is None:
+            end_date = end_date.replace(tzinfo=local_tz).astimezone(pytz.utc).replace(tzinfo=None)
 
     query = (
         db.session.query(
