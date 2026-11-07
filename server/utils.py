@@ -5,9 +5,93 @@ import base64
 from PIL import Image, ImageOps
 from collections import defaultdict
 import dash_bootstrap_components as dbc
-from dash import html
+from dash import dcc, html
 import dash_leaflet as dl
 from dateutil.parser import parse as parse_date
+from urllib.parse import quote
+
+BATTERY_MIN_V = 3.4  # Where the health panel's battery bar starts
+MARKER_SIZE = 36
+MARKER_SIZE_SELECTED = 54
+
+
+def parameter_label(parameter):
+    if parameter.lower() == "ph":
+        return "pH"
+    return parameter.replace("_", " ").capitalize()
+
+
+def sensor_label(sensor_name):
+    return sensor_name.replace("_", " ").title()
+
+
+def device_type_label(device_type):
+    return device_type.replace("_", " ").title() if device_type else "Sensor"
+
+
+def display_decimals(parameter):
+    # Tides here are a few tenths of a metre, which 1 decimal would flatten.
+    return 3 if parameter.startswith("water_level") else 1
+
+
+def sensor_state(sensor):
+    if not sensor.get('active', False):
+        return "deactivated"
+    return "online" if sensor.get('is_online', False) else "offline"
+
+
+def upload_preview(image_data):
+    """What a photo upload box shows: the chosen image, or the prompt if there is none."""
+    box = {"width": "100%", "borderWidth": "1px", "borderRadius": "5px", "textAlign": "center", "margin": "10px 0"}
+
+    if not image_data:
+        return (html.Div(["Drag and Drop or ", html.A("Select an Image File")]),
+                {**box, "height": "80px", "lineHeight": "80px", "borderStyle": "dashed"})
+
+    return (html.Img(src=image_data, alt="Sensor photo preview", style={"maxHeight": "100%", "maxWidth": "100%"}),
+            {**box, "height": "300px", "borderStyle": "solid", "display": "flex", "alignItems": "center",
+             "justifyContent": "center", "overflow": "hidden"})
+
+
+# Symbols drawn on a 24 by 24 grid. Anything else uses the default.
+MARKER_SYMBOLS = {
+    "sonde": '<path d="M12 5.5C12 5.5 7.2 10.7 7.2 14.1a4.8 4.8 0 0 0 9.6 0C16.800 10.7 12 5.500 12 5.500Z" fill="#fff"/>',
+    "tide_gauge": '<path d="M12 4.800v9.200M9.200 7.600 12 4.800l2.800 2.800M9.200 11.200 12 14l2.800-2.800M5 18.200c2.300-2 4.700-2 7 0s4.700 2 7 0" '
+                  'fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+    "wave_gauge": '<path d="M4.500 12c1.900-5 5.600-5 7.500 0s5.600 5 7.500 0" fill="none" stroke="#fff" '
+                  'stroke-width="2.600" stroke-linecap="round"/>',
+}
+DEFAULT_MARKER_SYMBOL = '<circle cx="12" cy="12" r="3.600" fill="#fff"/>'
+MARKER_STATUS_COLORS = {"online": "#1aa37a", "offline": "#8d9aa6", "deactivated": "#ffffff"}
+
+
+def marker_image(device_type, state=None):
+    """A sensor's map symbol as an image. The disc fills 24 of the 36 units, leaving a larger tap area."""
+    symbol = MARKER_SYMBOLS.get(device_type, DEFAULT_MARKER_SYMBOL)
+    status = ""
+    if state:
+        ring = ' stroke="#8d9aa6" stroke-width="1.800"' if state == "deactivated" else ' stroke="#fff" stroke-width="1.500"'
+        status = f'<circle cx="26.500" cy="9.500" r="3.800" fill="{MARKER_STATUS_COLORS[state]}"{ring}/>'
+    svg = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36">'
+           '<circle cx="18" cy="18" r="12" fill="#0b3d63" stroke="#fff" stroke-width="1.500"/>'
+           f'<g transform="translate(6 6)">{symbol}</g>{status}</svg>')
+    return "data:image/svg+xml," + quote(svg)
+
+
+def marker_icon(device_type, state, class_name, selected=False):
+    size = MARKER_SIZE_SELECTED if selected else MARKER_SIZE
+    return {
+        "iconUrl": marker_image(device_type, state),
+        "iconSize": [size, size],
+        "iconAnchor": [size // 2, size // 2],
+        "popupAnchor": [0, -size // 3],
+        "className": class_name,
+    }
+
+
+def relative_time(moment):
+    """A time that assets/app.js keeps up to date, such as "5 min ago"."""
+    return html.Span(moment.strftime("%b %d, %H:%M UTC"), **{"data-time": moment.isoformat() + "Z"})
 
 CARTO_API_KEY = os.environ.get("CARTO_API_KEY")
 
@@ -25,27 +109,47 @@ def get_carto_tile_url():
 # imports and circular imports
 
 def save_data_to_csv(data, sensor_name):
-    from server.models import get_sensor_timezone
+    from server.models import get_sensor_by_name, get_sensor_timezone, get_locations_for_range
     organized_data = defaultdict(dict)
 
-    timezone_str = get_sensor_timezone(sensor_name)
+    zone = get_sensor_timezone(sensor_name)
 
-    for timestamp, value, parameter, unit in data:
-        organized_data[timestamp][f"{parameter} {f'({unit})' if unit else ''}"] = value
+    for row in data:
+        organized_data[row.timestamp][f"{row.name} {f'({row.unit})' if row.unit else ''}"] = row.value
+        if row.qc_flag is not None:
+            organized_data[row.timestamp][f"{row.name} QARTOD flag"] = row.qc_flag
 
     # Create a DataFrame from the organized data
     df = pd.DataFrame.from_dict(organized_data, orient='index').reset_index()
 
+    # Timestamps are stored in UTC. Show them in the sensor's standard time.
+    df['index'] = (pd.to_datetime(df['index'], utc=True).dt.tz_convert(zone)
+                   .dt.strftime('%Y-%m-%d %H:%M:%S'))
+
     # Rename the first column to 'timestamp (timezone)'
-    formatted_time = f"timestamp ({timezone_str})"
+    formatted_time = f"timestamp ({zone})"
     df.rename(columns={'index': formatted_time}, inplace=True)
 
     # Convert the DataFrame to a CSV string
     csv_data = df.to_csv(index=False)
-    sensor_name_line = f"Sensor Name: {sensor_name}\n"
-    csv_data = sensor_name_line + csv_data
+    header = f"Sensor Name: {sensor_name}\n"
 
-    return csv_data
+    # Use where the sensor was during this data, which may not be where it is now
+    sensor = get_sensor_by_name(sensor_name)
+    times = [row.timestamp for row in data]
+    locations = get_locations_for_range(sensor, min(times), max(times))
+
+    if len(locations) > 1:
+        for number, loc in enumerate(locations, start=1):
+            end = loc.removed_at.strftime('%Y-%m-%d') if loc.removed_at else 'present'
+            header += (f"Location {number}: {loc.latitude}, {loc.longitude} "
+                       f"({loc.deployed_at.strftime('%Y-%m-%d')} to {end})\n")
+    else:
+        latitude = locations[0].latitude if locations else sensor.latitude
+        longitude = locations[0].longitude if locations else sensor.longitude
+        header += f"Latitude: {latitude}\nLongitude: {longitude}\n"
+
+    return header + csv_data
 
 def compress_image(base64_string, max_size=(800, 800), quality=70):
     """
@@ -115,6 +219,8 @@ def get_measurement_summary(sensor_name, include_health=False):
         if p_name == "latitude" or p_name == "longitude":
             continue
         summary_list.append({
+            "name": p_name,
+            "unit": p_unit,
             "parameter": f"{p_name} {f'({p_unit})' if p_unit else ''}",
             "value": data_obj.value,
             "timestamp": data_obj.timestamp
@@ -179,7 +285,7 @@ def get_deployment_statistics(sensor_name, deploy_data):
 
     return stats
 
-def create_map_markers(selected_sensor_name=None, show_inactive=False):
+def create_map_markers(selected_sensor_name=None, show_inactive=False, hide_selected=False):
     """
     Generates map markers.
     If selected_sensor_name is provided, it zooms in on that sensor and makes it bigger.
@@ -203,81 +309,50 @@ def create_map_markers(selected_sensor_name=None, show_inactive=False):
         # Highlight Logic
         is_selected = (name == selected_sensor_name)
 
+        if is_selected and hide_selected:
+            continue
+
         if not is_active and not show_inactive and not is_selected:
             continue
 
         if lat is None or lon is None:
             continue
 
-        header_style = {}
-        button_style = {"color": "white", "width": "100%"}
-
         if not is_active:
             status_text = "Deactivated"
-            header_class = "text-white p-2"
-            header_style = {"backgroundColor": "#b5b3b3"}
-            button_color = "light"
-            button_style.update({"backgroundColor": "#b5b3b3", "borderColor": "#b5b3b3"})
             marker_class = "inactive-marker"
         elif is_online:
             status_text = "Online"
-            header_class = "text-white bg-primary p-2"
-            button_color = "primary"
             marker_class = "online-marker"
         else:
             status_text = "Offline"
-            header_class = "text-white bg-secondary p-2"
-            button_color = "primary"
             marker_class = "offline-marker"
-
-        if s_type == "tide_gauge":
-            icon_file = "/assets/tide_gauge.svg"
-        elif s_type == "wave_gauge":
-            icon_file = "/assets/wave_gauge.svg"
-        else:
-            icon_file = "/assets/buoy.svg"
 
         #Set icon size
         if is_selected:
             map_center = [lat, lon]
             map_zoom = 12
-            icon_size = [60, 60]
-            icon_anchor = [30, 30]
-            popup_anchor = [0, -30]
-        else:
-            icon_size = [30, 30]
-            icon_anchor = [15, 15]
-            popup_anchor = [0, -20]
 
-        icon_opts = {
-            "iconUrl": icon_file,
-            "iconSize": icon_size,
-            "iconAnchor": icon_anchor,
-            "popupAnchor": popup_anchor,
-            "className": marker_class
-        }
+        icon_opts = marker_icon(s_type, sensor_state(s), marker_class, selected=is_selected)
 
         display_type = s_type.replace('_', ' ').title() if s_type else 'Unknown'
 
-        popup_content = dbc.Card([
-            dbc.CardHeader(name, className=header_class, style=header_style),
-            dbc.CardBody([
-                html.P(f"Type: {display_type}", className="small mb-1"),
-                html.P(f"Status: {status_text}", className="small mb-2 fw-bold"),
-
-                dbc.Button(
-                    "View Dashboard",
-                    href=f"/dashboard?sensor={name}",  # Standardized Query String
-                    size="sm",
-                    color=button_color,
-                    className="w-100",
-                    style=button_style
-                )
-            ], className="p-2")
-        ], className="border-0", style={"minWidth": "200px"})
+        last_report = s.get('last_report')
+        popup_content = html.Div([
+            html.Div([html.Span(className=f"status-dot status-{sensor_state(s)}"), sensor_label(name)],
+                     className="map-popup-title"),
+            html.Div(f"{display_type} \u00B7 {status_text}", className="map-popup-meta"),
+            html.Div(["Last report ", relative_time(last_report)] if last_report else "No data yet",
+                     className="map-popup-meta"),
+            # Set here because Leaflet recolors every link inside a popup
+            dcc.Link("View Dashboard", href=f"/dashboard?sensor={name}", className="map-popup-link",
+                     style={"color": "#ffffff", "backgroundColor": "#0b3d63"}),
+        ], className="map-popup")
 
         markers.append(
             dl.Marker(
+                # A new id per selected sensor closes any popup left open by the last one
+                id={"type": "sensor-marker", "selected": selected_sensor_name or "", "name": name},
                 position=[lat, lon],
                 title=name,
                 children=[
@@ -290,91 +365,107 @@ def create_map_markers(selected_sensor_name=None, show_inactive=False):
     return markers, map_center, map_zoom
 
 
+def sensor_row(sensor):
+    """One sensor in the home page list, with its status and newest reading."""
+    from server.models import get_most_recent
+
+    name = sensor['name']
+    type_label = device_type_label(sensor.get('device_type'))
+    state = sensor_state(sensor)
+    last_report = sensor.get('last_report')
+
+    # Deactivated sensors have no current readings to show. assets/app.js cycles through these.
+    readings = []
+    if sensor.get('active'):
+        rows = [row for row in get_most_recent(name) if row[1] not in ("latitude", "longitude")]
+        for i, (data, parameter, unit) in enumerate(sorted(rows, key=lambda row: row[1].lower())):
+            value = round(data.value, display_decimals(parameter))
+            text = f"{parameter_label(parameter)} {value} {unit or ''}".strip()
+            # Hidden here, not in the stylesheet, so that a stale stylesheet can't show them all
+            readings.append(html.Div(text, className="sensor-row-reading",
+                                     style={} if i == 0 else {"display": "none"}))
+
+    row = dcc.Link(
+        [
+            html.Span(className=f"status-dot status-{state}"),
+            html.Div(
+                [
+                    html.Div(sensor_label(name), className="sensor-row-name"),
+                    html.Div(
+                        [f"{type_label} \u00B7 ",
+                         relative_time(last_report) if last_report else "No data yet"],
+                        className="sensor-row-meta"
+                    ),
+                ],
+                className="sensor-row-text"
+            ),
+            html.Div(readings, className="sensor-row-value") if readings else None,
+        ],
+        href=f"/dashboard?sensor={name}",
+        className="sensor-row",
+    )
+    return html.Div(row, **{"data-search": f"{name} {type_label}".replace("_", " ").lower()})
+
+
 def create_instructions_card():
-    from server.models import get_all_sensors
-    sensors = get_all_sensors()
+    from server.models import get_network_summary
+    network = get_network_summary()
+    sensors = network['sensors']
 
     # Filter sensors based on explicit user intent (Active vs Deactivated)
     active_sensors = [s for s in sensors if s.get('active', False)]
     deactivated_sensors = [s for s in sensors if not s.get('active', False)]
+    active_sensors.sort(key=lambda s: (not s.get('is_online', False), s['name']))
 
-    # Helper function to create a "Title + Subtitle" list
     def make_sensor_list(sensor_list):
         if not sensor_list:
-            return html.Div("No sensors found.", className="text-muted small p-2")
+            return html.Div("No sensors here yet.", className="sensor-list-empty")
+        return html.Div([sensor_row(s) for s in sensor_list], className="sensor-list")
 
-        list_items = []
-        for s in sensor_list:
-            s_type = s.get('device_type')
-            display_type = s_type.replace('_', ' ').title() if s_type else 'Unknown'
-            name = s.get('name', 'Unknown')
+    def stat(value, label):
+        return html.Div([html.Div(value, className="network-stat-value"),
+                         html.Div(label, className="network-stat-label")], className="network-stat")
 
-            is_active = s.get('active', False)
-            is_online = s.get('is_online', False)
-
-            if not is_active:
-                dot_class = "bi bi-circle-fill text-secondary"  # Gray for deactivated
-            elif is_online:
-                dot_class = "bi bi-circle-fill text-success"  # Green for online
-            else:
-                dot_class = "bi bi-circle-fill text-secondary"
-
-            item = dbc.ListGroupItem(
-                html.A(
-                    [
-                        # The Status Dot
-                        html.Div(
-                            html.I(className=dot_class, style={"fontSize": "0.6rem"}),
-                            className="me-3 d-flex align-items-center"
-                        ),
-                        html.Div(
-                            [
-                                html.Span(name, className="fw-bold text-dark me-2",
-                                          style={"fontSize": "0.9rem"}),
-                                html.Span(f"({display_type})", className="text-muted small",
-                                          style={"fontSize": "0.75rem", "paddingTop": "2px"})
-                            ],
-                            className="d-flex align-items-center flex-wrap"
-                        )
-                    ],
-                    # Link setup
-                    href=f"/dashboard?sensor={name}",
-                    className="text-decoration-none d-flex align-items-center w-100"
-                ),
-                className="p-2 border-0 border-bottom sensor-list-item",
-                action=True
-            )
-            list_items.append(item)
-
-        return dbc.ListGroup(list_items, flush=True)
+    latest = network['latest_report']
 
     return dbc.Card(
         [
             dbc.CardHeader(
                 html.Div([
-                    html.Span([
-                        html.I(className="bi bi-hdd-network me-2"),
-                        "Sensor Network"
-                    ], className="fw-bold"),
+                    html.Div([
+                        html.Div("Sensor network", className="network-title"),
+                        html.Div("Live coastal monitoring", className="network-subtitle"),
+                    ]),
 
                     # Toggle Button
                     dbc.Button(
-                        "▼",
+                        "\u25B2",
                         id="toggle-instructions",
                         color="link",
                         size="sm",
-                        className="p-0 text-white text-decoration-none",
-                        style={"fontSize": "1.2rem", "lineHeight": "1"}
+                        className="network-toggle",
                     )
                 ], className="d-flex justify-content-between align-items-center"),
-                className="bg-primary text-white",
-                style={"cursor": "move"}
             ),
 
             # Collapsible Body
             dbc.Collapse(
                 dbc.CardBody(
                     [
+                        html.Div(
+                            [
+                                stat(f"{network['online']} of {network['active']}", "Reporting"),
+                                stat(f"{network['reports_24h']:,}", "Reports, last 24 h"),
+                                stat(relative_time(latest) if latest else "\u2014", "Latest report"),
+                            ],
+                            className="network-stats"
+                        ),
+                        html.Div(
+                            [html.I(className="bi bi-search"),
+                             dcc.Input(id="sensor-filter", type="text", placeholder="Filter sensors",
+                                       className="sensor-filter-input", debounce=False)],
+                            className="sensor-filter"
+                        ),
                         dbc.Accordion(
                             [
                                 dbc.AccordionItem(
@@ -384,24 +475,13 @@ def create_instructions_card():
                                 ),
                                 dbc.AccordionItem(
                                     [
-                                        dbc.Row(
+                                        html.Div(
                                             [
-                                                dbc.Col(html.Span("Show on Map",
-                                                                  className="small text-muted fw-bold",
-                                                                  style={"fontSize": "10px"}),
-                                                        className="p-0"
-                                                        ),
-                                                dbc.Col(
-                                                    dbc.Switch(
-                                                        id="show-inactive-switch",
-                                                        value=False,
-                                                        className="d-flex justify-content-end",
-                                                        style={"minHeight": "unset"}
-                                                    )
-                                                )
+                                                html.Span("Show on map"),
+                                                dbc.Switch(id="show-inactive-switch", value=False,
+                                                           className="m-0")
                                             ],
-                                            className="mb-2 g-0 border-bottom pb-2 align-items-center mx-1",
-                                            style={"marginTop": "-15px", "paddingTop": "0px"}
+                                            className="inactive-switch-row"
                                         ),
                                         # The list of deactivated sensors follows the toggle
                                         make_sensor_list(deactivated_sensors)
@@ -410,27 +490,19 @@ def create_instructions_card():
                                     item_id="offline-item"
                                 ),
                             ],
+                            id="sensor-accordion",
                             flush=True,
-                            start_collapsed=True,
                             always_open=True,
+                            start_collapsed=True,  # Desktop opens Active, see callbacks/clientside.py
                             className="sensor-accordion"
-                        )
+                        ),
                     ],
                     className="p-0"
                 ),
                 id="instructions-body",
-                is_open=True
-            )
+                is_open=False,  # Desktop opens it, see callbacks/clientside.py
+            ),
         ],
         id="instructions-card",
-        style={
-            "position": "absolute",
-            "top": "20px",
-            "left": "20px",
-            "width": "300px",
-            "zIndex": "1050",
-            "boxShadow": "0 4px 12px rgba(0,0,0,0.15)",
-            "maxHeight": "80vh",
-            "overflowY": "auto"
-        },
+        className="network-card",
     )

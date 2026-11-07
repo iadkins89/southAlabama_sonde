@@ -5,6 +5,11 @@ from server.utils import create_instructions_card, create_map_markers, get_carto
 
 dash.register_page(__name__, path='/')
 
+
+def legend_item(state, label):
+    return html.Div([html.Span(className=f"status-dot status-{state}"), label], className="map-legend-item")
+
+
 def layout():
 
     card_content = create_instructions_card()
@@ -19,10 +24,15 @@ def layout():
                 ],
                 center=map_center,
                 zoom=map_zoom,
-                style={"width": "100%", "height": "100vh"},
+                style={"width": "100%", "height": "100%"},
                 zoomControl=False
             ),
-            card_content
+            card_content,
+            html.Div(
+                [legend_item("online", "Online"), legend_item("offline", "Offline"),
+                 legend_item("deactivated", "Deactivated")],
+                className="map-legend"
+            ),
         ],
-        style={"position": "relative", "height": "100vh", "overflow": "hidden"}
+        className="home-map"
     )

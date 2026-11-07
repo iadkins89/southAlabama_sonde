@@ -14,8 +14,8 @@ def layout():
 
     layout = dbc.Container([
         dcc.Store(id="sensor-active-status-store"),
-        html.H2("Update Existing Sensor", className="text-center mt-4"),
-        dbc.Button("Back", href="/onboarding", color="secondary", className="mb-4"),
+        html.H1("Update a sensor", className="form-title mt-2"),
+        dbc.Button("\u2190 Back", href="/onboarding", color="secondary", outline=True, size="sm", className="mb-4"),
         dbc.Form([
             dbc.Row([
                 dbc.Col(dbc.Label("Select Device", className="text-start"), width=12, sm=4),
@@ -26,7 +26,7 @@ def layout():
                 ), width=12, sm=8),
             ], className="mb-3"),
 
-            html.Div(id="form-container", children=[
+            html.Div(id="form-container", style={"display": "none"}, children=[
                 dbc.Row([
                     dbc.Col(dbc.Label("Device Name", className="text-start"), width=12, sm=4),
                     dbc.Col(dbc.Input(type="text", id="update-device-name", placeholder="Enter device name"), width=12, sm=8),
@@ -38,12 +38,6 @@ def layout():
                 dbc.Row([
                     dbc.Col(dbc.Label("Longitude", className="text-start"), width=12, sm=4),
                     dbc.Col(dbc.Input(type="number", id="update-longitude", placeholder="Enter longitude"), width=12, sm=8),
-                ], className="mb-3"),
-                dbc.Row([
-                    dbc.Col(dbc.Label("Parameter Units", className="text-start"), width=12, sm=4),
-                    dbc.Col([
-                        html.Div(id="parameters-container")  # Dynamically populated with parameters
-                    ], width=12, sm=8)
                 ], className="mb-3"),
                 dbc.Row([
                     dbc.Col(dbc.Label("Device Type", className="text-start align-self-center"), width=12, sm=4),
@@ -90,17 +84,16 @@ def layout():
                                 "borderStyle": "dashed",
                                 "borderRadius": "5px",
                                 "textAlign": "center",
-                                "margin": "10px",
+                                "margin": "10px 0",
                             },
                             multiple=False,
                             accept="image/*"
                         ),
-                        html.Div(html.Img(id="update-image-preview",style={"width": "100%", "max-width": "300px", "marginTop": "10px"}), className="text-center"),
                         ], width=12, sm=8
                     ),
                 ], className="mb-3"),
                 dbc.Row([
-                    dbc.Col(dbc.Button("Submit", id="update-submit-btn", color="success", className="mt-3 w-100"),
+                    dbc.Col(dbc.Button("Submit", id="update-submit-btn", color="primary", className="mt-3 w-100"),
                             width=12, sm=6),
                     dbc.Col(dbc.Button("Deactivate", id="toggle-active-btn", color="danger", className="mt-3 w-100"),
                             width=12, sm=6),
@@ -108,6 +101,6 @@ def layout():
                 html.Div(id="update-submission-response", className="mt-3"),
             ])
         ], className="px-3 py-3")
-    ])
+    ], className="form-page")
 
     return layout

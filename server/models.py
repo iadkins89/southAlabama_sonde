@@ -1,11 +1,33 @@
 from server import db
-from sqlalchemy import Index, func
-from datetime import datetime, timedelta
+from sqlalchemy import Index, func, or_, text
+from sqlalchemy.orm import defer
+from sqlalchemy.dialects.postgresql import JSONB
+from datetime import datetime, timedelta, timezone as fixed_timezone
 import pytz
 from werkzeug.security import generate_password_hash, check_password_hash
+from server.qc import FAIL
 from server.utils import compress_image
 
-HEALTH_PARAMS = ['Battery', 'RSSI', 'SNR', 'battery', 'rssi', 'snr']
+HEALTH_PARAMS = ['Battery', 'RSSI', 'SNR', 'battery', 'rssi', 'snr', 'board_temperature']
+
+PARAMETER_UNITS = {
+    "temperature": "°C",
+    "board_temperature": "°C",
+    "pressure": "Pa",
+    "humidity": "%",
+    "velocity": "m/s",
+    "acceleration": "m/s\u00B2",
+    "water_level": "m",
+    "wave_height": "m",
+    "depth": "m",
+    "dissolved_oxygen": "mg/L",
+    "conductivity": "µS/cm",
+    "turbidity": "NTU",
+    "ph": "",
+    "rssi": "dBm",
+    "snr": "dB",
+    "battery": "V",
+}
 
 user_sensor_association = db.Table('user_sensor',
     db.Column('user_id', db.Integer, db.ForeignKey('user.id'), primary_key=True),
@@ -112,6 +134,10 @@ class SensorData(db.Model):
     timestamp = db.Column(db.DateTime, index=True, nullable=False)
     value = db.Column(db.Float, nullable=False)
 
+    # Display copy of the current QARTOD-scale flag. NULL means not evaluated.
+    # The full record is in qc_assessments.
+    qc_flag = db.Column(db.SmallInteger, nullable=True)
+
     sensor_id = db.Column(db.Integer, db.ForeignKey('sensors.id'), nullable=False)
     parameter_id = db.Column(db.Integer, db.ForeignKey('parameters.id'), nullable=False)
 
@@ -123,27 +149,153 @@ class SensorData(db.Model):
         Index('idx_sensor_param_time', 'sensor_id', 'parameter_id', 'timestamp'),
     )
 
+class GaugeDatum(db.Model):
+    """The gauge's NAVD88 elevation over time, so a re-survey or moved mount
+    only applies to readings taken after that change."""
+    __tablename__ = 'gauge_datums'
+
+    id = db.Column(db.Integer, primary_key=True)
+    sensor_id = db.Column(db.Integer, db.ForeignKey('sensors.id', ondelete='CASCADE'),
+                          nullable=False, index=True)
+    elevation_m = db.Column(db.Float, nullable=False)
+    valid_from = db.Column(db.DateTime, nullable=False)
+    valid_to = db.Column(db.DateTime, nullable=True)  # NULL means current
+
+
+class GaugeReading(db.Model):
+    """One row per tide gauge packet, holding what the device sent, unchanged."""
+    __tablename__ = 'gauge_readings'
+
+    id = db.Column(db.Integer, primary_key=True)
+    sensor_id = db.Column(db.Integer, db.ForeignKey('sensors.id', ondelete='CASCADE'), nullable=False)
+    mark_time = db.Column(db.DateTime, nullable=False)
+    received_at = db.Column(db.DateTime, nullable=False)
+    fcnt = db.Column(db.Integer)
+
+    distance_mm = db.Column(db.Integer)  # NULL when the window had no valid readings
+    sd_mm = db.Column(db.Integer)
+    n_used = db.Column(db.Integer)
+    n_rejected = db.Column(db.Integer)
+    n_no_target = db.Column(db.Integer)
+    n_floor = db.Column(db.Integer)
+
+    battery_v = db.Column(db.Float)
+    board_temp_c = db.Column(db.Float)
+    rssi = db.Column(db.Float)
+    snr = db.Column(db.Float)
+
+    status = db.Column(db.SmallInteger, nullable=False)
+    queue_depth = db.Column(db.SmallInteger)
+    backfill = db.Column(db.Boolean, nullable=False, default=False)
+    time_source = db.Column(db.String(10), nullable=False)  # 'device', or 'server' for compact packets
+    degraded = db.Column(db.Boolean, nullable=False, default=False)  # Compact packet, coarser statistics
+    time_ok = db.Column(db.Boolean, nullable=False, default=True)
+    datum_id = db.Column(db.Integer, db.ForeignKey('gauge_datums.id'))
+
+    # A device with a lost clock can repeat mark times, so only trusted times
+    # have to be unique. This is also what makes redelivered packets harmless.
+    __table_args__ = (
+        Index('uq_gauge_reading_mark', 'sensor_id', 'mark_time', unique=True,
+              postgresql_where=text('time_ok')),
+    )
+
+
+class QcConfig(db.Model):
+    """The thresholds in force over time, so every flag can be explained later."""
+    __tablename__ = 'qc_configs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    sensor_id = db.Column(db.Integer, db.ForeignKey('sensors.id', ondelete='CASCADE'),
+                          nullable=False, index=True)
+    parameter_id = db.Column(db.Integer, db.ForeignKey('parameters.id'), nullable=False)
+    thresholds = db.Column(JSONB, nullable=False)
+    manual_version = db.Column(db.String(100))
+    valid_from = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    valid_to = db.Column(db.DateTime, nullable=True)  # NULL means current
+
+
+class QcAssessment(db.Model):
+    """
+    A judgement on one value. A reading can have several: a real-time QARTOD
+    verdict, a model's predicted NERRS label and a reviewer's NERRS label.
+    Later reviews add rows rather than changing the real-time verdict.
+    """
+    __tablename__ = 'qc_assessments'
+
+    id = db.Column(db.Integer, primary_key=True)
+    sensor_data_id = db.Column(db.Integer, db.ForeignKey('sensor_data.id', ondelete='CASCADE'),
+                               nullable=False, index=True)
+    scheme = db.Column(db.String(20), nullable=False)  # 'qartod' or 'nerrs'
+    source = db.Column(db.String(20), nullable=False)  # 'realtime', 'model' or 'reviewer'
+    flag = db.Column(db.SmallInteger, nullable=False)  # Read only together with scheme
+    error_code = db.Column(db.String(10))              # NERRS, e.g. 'SSD'
+    comment_code = db.Column(db.String(10))            # NERRS, e.g. 'CRE'
+    tests = db.Column(JSONB)                           # QARTOD result per test
+    score = db.Column(db.Float)                        # Model output
+    corrected_value = db.Column(db.Float)              # NERRS flag 5
+    config_id = db.Column(db.Integer, db.ForeignKey('qc_configs.id'))
+    model_version = db.Column(db.String(50))
+    assessed_by = db.Column(db.String(150))
+    assessed_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index('uq_qc_realtime', 'sensor_data_id', 'scheme', unique=True,
+              postgresql_where=text("source = 'realtime'")),
+    )
+
+
 # ----------------
 # Query functions
 #-----------------
+def not_failed():
+    # A plain != FAIL would also drop NULL rows, which is all unevaluated data.
+    return or_(SensorData.qc_flag.is_(None), SensorData.qc_flag != FAIL)
+
 def get_sensor_by_name(name):
     return db.session.query(Sensor).filter(Sensor.name == name).first()
 
 def get_param_by_name(name):
     return db.session.query(Parameter).filter(Parameter.name == name).first()
 
+def get_or_create_parameter(name):
+    parameter = get_param_by_name(name)
+    if not parameter:
+        parameter = Parameter(name=name, canonical_unit=PARAMETER_UNITS.get(name.lower(), ""))
+        db.session.add(parameter)
+        db.session.flush()
+    return parameter
+
+def standard_time(timezone_name):
+    """
+    The timezone's standard time, ignoring daylight saving. One offset all year
+    means graphs and exports never repeat or skip an hour at a clock change.
+    """
+    try:
+        zone = pytz.timezone(timezone_name)
+    except pytz.UnknownTimeZoneError:
+        return fixed_timezone.utc
+
+    year = datetime.utcnow().year
+    for month in (1, 7):  # One of these is standard time in either hemisphere
+        moment = zone.localize(datetime(year, month, 1))
+        if not moment.dst():
+            return fixed_timezone(moment.utcoffset(), moment.tzname())
+    return fixed_timezone.utc
+
+
 def get_sensor_timezone(sensor_name):
+    """The standard time of the timezone picked for this sensor at onboarding."""
     sensor = get_sensor_by_name(sensor_name)
     if sensor and sensor.timezone:
-        return sensor.timezone
-    return 'UTC'
+        return standard_time(sensor.timezone)
+    return fixed_timezone.utc
 
 
 def get_all_sensors():
     """Returns a list of all sensors as dictionaries.
        Doesn't use is_online for efficiency.
     """
-    sensors = db.session.query(Sensor).all()
+    sensors = db.session.query(Sensor).options(defer(Sensor.image_data)).all()
 
     #Get the latest timestamp for ALL sensors in ONE query
     latest_data = db.session.query(
@@ -168,12 +320,44 @@ def get_all_sensors():
             "latitude": s.latitude,
             "longitude": s.longitude,
             "device_type": s.device_type,
-            "image_data": s.image_data,
             "active": s.active,
-            "is_online": is_online
+            "is_online": is_online,
+            "last_report": latest_pings.get(s.id)
         })
 
     return results
+
+def get_network_summary():
+    """Sensor counts and the last day's reading count, for the home page."""
+    sensors = get_all_sensors()
+    active = [s for s in sensors if s['active']]
+    reports = [s['last_report'] for s in active if s['last_report']]
+    since = datetime.utcnow() - timedelta(hours=24)
+    return {
+        "sensors": sensors,
+        "active": len(active),
+        "online": sum(s['is_online'] for s in active),
+        # One packet stores many values, so a report is one sensor at one time
+        "reports_24h": db.session.query(SensorData.sensor_id, SensorData.timestamp).filter(
+            SensorData.timestamp >= since).distinct().count(),
+        "latest_report": max(reports) if reports else None,
+    }
+
+def get_qc_counts(sensor_name, days=7):
+    """How many readings got each QC flag, over the sensor's latest few days."""
+    sensor = get_sensor_by_name(sensor_name)
+    if not sensor:
+        return {}
+    latest = db.session.query(func.max(SensorData.timestamp)).filter(
+        SensorData.sensor_id == sensor.id, SensorData.qc_flag.isnot(None)).scalar()
+    if not latest:
+        return {}
+    rows = db.session.query(SensorData.qc_flag, func.count(SensorData.id)).filter(
+        SensorData.sensor_id == sensor.id,
+        SensorData.qc_flag.isnot(None),
+        SensorData.timestamp >= latest - timedelta(days=days)
+    ).group_by(SensorData.qc_flag).all()
+    return dict(rows)
 
 def get_sensors_grouped_by_type():
     sensors = get_all_sensors()
@@ -185,7 +369,7 @@ def get_sensors_grouped_by_type():
         grouped[d_type].append(s['name'])
     return grouped
 
-def get_data(sensor_name, start_date, end_date, lora=False, localize_input=False):
+def get_data(sensor_name, start_date, end_date, lora=False, localize_input=False, include_failed=False):
     """
         Retrieves sensor data.
 
@@ -193,26 +377,26 @@ def get_data(sensor_name, start_date, end_date, lora=False, localize_input=False
             lora (bool): If True, LoRaWAN data (rssi, snr, and battery) are returned.
                          False, all other data is retrieved
             localize_input (bool): If True, assumes start_date/end_date are in the
-                                   SENSOR'S timezone. Converts them to UTC before querying.
+                                   sensor's standard time. Converts them to UTC before querying.
+            include_failed (bool): If True, readings that failed QC are returned too.
+                                   Exports use this so that nothing is silently lost.
         """
     sensor = get_sensor_by_name(sensor_name)
     if not sensor:
         return []
 
     if localize_input and sensor.timezone:
-        try:
-            local_tz = pytz.timezone(sensor.timezone)
-            if start_date.tzinfo is None:
-                start_date = local_tz.localize(start_date).astimezone(pytz.utc).replace(tzinfo=None)
-            if end_date.tzinfo is None:
-                end_date = local_tz.localize(end_date).astimezone(pytz.utc).replace(tzinfo=None)
-        except:
-            pass
+        local_tz = standard_time(sensor.timezone)
+        if start_date.tzinfo is None:
+            start_date = start_date.replace(tzinfo=local_tz).astimezone(pytz.utc).replace(tzinfo=None)
+        if end_date.tzinfo is None:
+            end_date = end_date.replace(tzinfo=local_tz).astimezone(pytz.utc).replace(tzinfo=None)
 
     query = (
         db.session.query(
             SensorData.timestamp.label('timestamp'),
             SensorData.value.label('value'),
+            SensorData.qc_flag.label('qc_flag'),
             Parameter.name.label('name'),
             Parameter.canonical_unit.label('unit')
         )
@@ -226,6 +410,9 @@ def get_data(sensor_name, start_date, end_date, lora=False, localize_input=False
         query = query.filter(Parameter.name.in_(HEALTH_PARAMS))
     else:
         query = query.filter(Parameter.name.notin_(HEALTH_PARAMS))
+
+    if not include_failed:
+        query = query.filter(not_failed())
 
     results = query.order_by(SensorData.timestamp).all()
 
@@ -260,25 +447,46 @@ def get_most_recent(sensor_name, Lora = False):
     if not sensor:
         return []
 
+    # Search only the wanted parameters, so that a health-only packet or a failed
+    # reading doesn't leave the summary card empty.
+    if Lora:
+        wanted = [Parameter.name.in_(HEALTH_PARAMS)]
+    else:
+        wanted = [~Parameter.name.in_(HEALTH_PARAMS), not_failed()]
+
     latest_ts = db.session.query(func.max(SensorData.timestamp)) \
-        .filter_by(sensor_id=sensor.id).scalar()
+        .join(Parameter, SensorData.parameter_id == Parameter.id) \
+        .filter(SensorData.sensor_id == sensor.id, *wanted).scalar()
 
     if not latest_ts:
         return []
 
-    query = (
+    recent_data = (
         db.session.query(SensorData, Parameter.name, Parameter.canonical_unit) \
         .join(Parameter, SensorData.parameter_id == Parameter.id) \
         .filter(SensorData.sensor_id == sensor.id) \
         .filter(SensorData.timestamp == latest_ts) \
-        )
-
-    if Lora:
-        recent_data = query.filter(Parameter.name.in_(HEALTH_PARAMS)).all()
-    else:
-        recent_data = query.filter(~Parameter.name.in_(HEALTH_PARAMS)).all()
+        .filter(*wanted) \
+        .all()
+    )
 
     return recent_data
+
+def update_gauge_datum(sensor_id, elevation, now):
+    """Starts a new datum if the elevation changed. Past readings keep their old one."""
+    current = GaugeDatum.query.filter_by(sensor_id=sensor_id, valid_to=None).first()
+
+    if current and elevation is not None and abs(current.elevation_m - elevation) < 1e-6:
+        return
+
+    if current:
+        current.valid_to = now
+
+    if elevation is not None:
+        # A first datum covers everything, including any backfilled readings.
+        valid_from = now if current else datetime(1970, 1, 1)
+        db.session.add(GaugeDatum(sensor_id=sensor_id, elevation_m=elevation, valid_from=valid_from))
+
 
 def create_or_update_sensor(name,
                             latitude,
@@ -390,6 +598,7 @@ def create_or_update_sensor(name,
         sensor.timezone = timezone
         sensor.active = active
         sensor.navd88_elevation = navd88_elevation
+        update_gauge_datum(sensor.id, navd88_elevation, now)
 
         if image_data:
             sensor.image_data = compress_image(image_data)
@@ -402,6 +611,15 @@ def create_or_update_sensor(name,
     except Exception as e:
         db.session.rollback()
         return f"Database Error: {str(e)}"
+
+def get_locations_for_range(sensor, start, end):
+    """The deployments that overlap a time range, oldest first."""
+    return LocationHistory.query.filter(
+        LocationHistory.sensor_id == sensor.id,
+        LocationHistory.deployed_at <= end,
+        (LocationHistory.removed_at.is_(None)) | (LocationHistory.removed_at >= start)
+    ).order_by(LocationHistory.deployed_at).all()
+
 
 def get_past_deployments(sensor_name):
     """

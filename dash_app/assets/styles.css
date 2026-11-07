@@ -74,15 +74,15 @@
 }
 
 /* =========================================
-   DESKTOP MENU "POPUP" STYLE
+   TABLET MENU "POPUP" STYLE
    ========================================= */
-@media (min-width: 769px) {
+@media (min-width: 769px) and (max-width: 991.98px) {
     /* This targets the collapsible area only on larger screens.
        It forces it to act like a dropdown card instead of a full-width bar.
     */
     .navbar-collapse {
         position: absolute;
-        top: 90px;       /* Just below the 100px navbar (allows small overlap or gap) */
+        top: 62px;       /* Just below the 64px navbar (allows small overlap or gap) */
         right: 20px;     /* Aligned with the right edge padding */
         width: 300px;    /* Fixed width so it looks like a menu, not a banner */
 
@@ -160,14 +160,14 @@
     z-index: 9999;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
     background-color: #f8f9fa !important;
-    min-height: 100px; /* Adjust this if you want the bar shorter */
+    min-height: 64px; /* Adjust this if you want the bar shorter */
     padding: 0 20px;
     display: flex;
     align-items: center; /* Centers items vertically */
 }
 
 body {
-    padding-top: 100px; /* Must match navbar min-height */
+    padding-top: 64px; /* Must match navbar min-height */
 }
 
 /* =========================================
@@ -222,7 +222,7 @@ body {
    DESKTOP LOGO & TITLE
    ========================================= */
 .navbar-logo {
-    height: 80px; /* Fixed height prevents "whole screen" issue */
+    height: 46px; /* Fixed height prevents "whole screen" issue */
     width: auto;  /* Maintains aspect ratio */
     transition: height 0.3s ease;
     margin-right: 15px;
@@ -230,7 +230,7 @@ body {
 
 .navbar-title {
     color: #154360;
-    font-size: 2rem;
+    font-size: 1.4rem;
     margin: 0;
     white-space: nowrap;
     line-height: 1.2;
@@ -271,4 +271,61 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+/* -----------------------------------------------------------------
+   POLISH
+----------------------------------------------------------------- */
+/* The theme's gray body text is too pale to read comfortably */
+:root {
+    --bs-body-color: #495057;
+}
+
+body {
+    color: var(--bs-body-color);
+}
+
+@media (min-width: 769px) {
+    /* Everything sized in rem scales with this, so desktop text and buttons shrink together */
+    html {
+        font-size: 14.5px;
+    }
+
+    .form-page .btn-lg {
+        padding: 0.45rem 1rem;
+        font-size: 1rem;
+    }
+}
+
+@media (min-width: 992px) {
+    /* Logo and title on the left, links on the right */
+    .custom-navbar .container-fluid > .row {
+        width: auto !important;
+    }
+
+    .custom-navbar .navbar-collapse {
+        justify-content: flex-end;
+    }
+
+    .nav-pills .nav-link {
+        padding: 4px 14px !important;
+        height: 34px !important;
+        margin: 0 2px;
+    }
+}
+
+/* Forms stay a readable width instead of stretching across a desktop */
+.container.form-page {
+    max-width: 680px;
+}
+
+@media (min-width: 768px) {
+    .container.form-page {
+        margin-top: 2rem;
+        margin-bottom: 2rem;
+        padding: 1.5rem 2rem !important;
+        border: 1px solid #e9ecef;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    }
 }
