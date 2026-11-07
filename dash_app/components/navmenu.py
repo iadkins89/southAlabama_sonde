@@ -35,7 +35,7 @@ def create_menu():
                                     **{"aria-label": "Find a sensor"}
                                 ),
                                 html.Button(
-                                    html.I(className="bi bi-moon-stars"),
+                                    html.I(className="bi bi-sun"),
                                     id="theme-toggle", className="theme-toggle", type="button",
                                     **{"aria-label": "Switch between light and dark"}
                                 ),

@@ -572,6 +572,13 @@ a {
     padding: 0 6px 8px;
 }
 
+/* Three rows tall, then the list scrolls inside the card */
+.sensor-list {
+    max-height: calc(3 * (2.475rem + 16px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
 .sensor-row {
     display: flex;
     align-items: center;
@@ -627,6 +634,11 @@ a {
     .sensor-row-value {
         flex-basis: 100%;
         padding-left: 19px;
+    }
+
+    /* Rows with a reading are taller here, because it sits on its own line */
+    .sensor-list:has(.sensor-row-value) {
+        max-height: calc(3 * (3.75rem + 26px));
     }
 }
 

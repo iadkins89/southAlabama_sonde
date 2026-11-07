@@ -12,11 +12,11 @@ INDEX_STRING = """<!DOCTYPE html>
         <title>{%title%}</title>
         <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
         <script>
-            try {
-                if (localStorage.getItem("sat-theme") === "dark") {
-                    document.documentElement.setAttribute("data-bs-theme", "dark");
-                }
-            } catch (e) {}
+            var savedTheme = null;
+            try { savedTheme = localStorage.getItem("sat-theme"); } catch (e) {}
+            if (savedTheme !== "light") {
+                document.documentElement.setAttribute("data-bs-theme", "dark");
+            }
         </script>
         {%css%}
     </head>
