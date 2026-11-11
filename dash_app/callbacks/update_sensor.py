@@ -9,9 +9,16 @@ import dash_bootstrap_components as dbc
 from flask import session
 
 
+def option_label(sensor):
+    if sensor['testing']:
+        return f"{sensor['name']} (Testing)"
+    if not sensor.get('active', True):
+        return f"{sensor['name']} (Inactive)"
+    return sensor['name']
+
+
 def sensor_options():
-    return [{'label': f"{s['name']} (Inactive)" if not s.get('active', True) else s['name'],
-             'value': s['name']} for s in get_all_sensors()]
+    return [{'label': option_label(s), 'value': s['name']} for s in get_all_sensors(testing=None)]
 
 
 @callback(
@@ -30,6 +37,19 @@ def show_form_on_device_select(selected_device):
     if selected_device:
         return {"display": "block"}  # Show the form
     return {"display": "none"}  # Hide the form if no device is selected
+
+@callback(
+    [Output("update-location-rows", "style"),
+     Output("update-testing-note", "style"),
+     Output("toggle-active-col", "style")],
+    Input("select-device-dropdown", "value")
+)
+def hide_location_for_test_devices(selected_device):
+    sensor = get_sensor_by_name(selected_device) if selected_device else None
+    if sensor and sensor.testing:
+        return {"display": "none"}, {}, {"display": "none"}
+    return {}, {"display": "none"}, {}
+
 
 @callback(
     Output("update-gauge-elevation-row", "style"),

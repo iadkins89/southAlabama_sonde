@@ -41,7 +41,8 @@ def add_sensor_call(name):
         "submit-btn",
         [("device-name", "value", name), ("latitude", "value", 30.5), ("longitude", "value", -87.9),
          ("timezone", "value", "America/Chicago"), ("device-type", "value", "sonde"),
-         ("device-image", "contents", None), ("gauge-elevation", "value", None)],
+         ("device-image", "contents", None), ("gauge-elevation", "value", None),
+         ("add-testing-switch", "value", False)],
     )
 
 

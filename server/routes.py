@@ -87,8 +87,9 @@ def setup_routes(server):
         lat = payload.get('lat') #handle missing data gracefully
         lon = payload.get('lon')
 
-        #Update Sensor table (map pin updates from this)
-        if lat is not None and lon is not None:
+        #Update Sensor table (map pin updates from this). A test device's position
+        #is wherever it is being tested, so only its readings keep it.
+        if lat is not None and lon is not None and not sensor.testing:
             sensor.latitude = float(lat)
             sensor.longitude = float(lon)
 
@@ -136,12 +137,14 @@ def setup_routes(server):
 
             db.session.commit()
 
-            #Real time data
-            emit_event("sensor_update", {
-                "sensor": sensor.name,
-                "timestamp": timestamp.isoformat(),
-                "measurements": new_data
-            })
+            #Real time data. Every browser receives these, so test devices are left
+            #out; their page checks for new readings itself.
+            if not sensor.testing:
+                emit_event("sensor_update", {
+                    "sensor": sensor.name,
+                    "timestamp": timestamp.isoformat(),
+                    "measurements": new_data
+                })
 
             return jsonify({'message': 'Data received and stored successfully'}), 200
 

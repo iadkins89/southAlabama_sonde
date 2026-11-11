@@ -31,14 +31,19 @@ def layout():
                     dbc.Col(dbc.Label("Device Name", className="text-start"), width=12, sm=4),
                     dbc.Col(dbc.Input(type="text", id="update-device-name", placeholder="Enter device name"), width=12, sm=8),
                 ], className="mb-3"),
-                dbc.Row([
-                    dbc.Col(dbc.Label("Latitude", className="text-start"), width=12, sm=4),
-                    dbc.Col(dbc.Input(type="number", id="update-latitude", placeholder="Enter latitude"), width=12, sm=8),
-                ], className="mb-3"),
-                dbc.Row([
-                    dbc.Col(dbc.Label("Longitude", className="text-start"), width=12, sm=4),
-                    dbc.Col(dbc.Input(type="number", id="update-longitude", placeholder="Enter longitude"), width=12, sm=8),
-                ], className="mb-3"),
+                html.Div([
+                    dbc.Row([
+                        dbc.Col(dbc.Label("Latitude", className="text-start"), width=12, sm=4),
+                        dbc.Col(dbc.Input(type="number", id="update-latitude", placeholder="Enter latitude"), width=12, sm=8),
+                    ], className="mb-3"),
+                    dbc.Row([
+                        dbc.Col(dbc.Label("Longitude", className="text-start"), width=12, sm=4),
+                        dbc.Col(dbc.Input(type="number", id="update-longitude", placeholder="Enter longitude"), width=12, sm=8),
+                    ], className="mb-3"),
+                ], id="update-location-rows"),
+                dbc.Alert(["This is a test device, so it has no location yet. Set one when it goes live from ",
+                           dcc.Link("Test Devices", href="/onboarding/test-devices"), "."],
+                          id="update-testing-note", color="info", className="small", style={"display": "none"}),
                 dbc.Row([
                     dbc.Col(dbc.Label("Device Type", className="text-start align-self-center"), width=12, sm=4),
                     dbc.Col(
@@ -96,7 +101,7 @@ def layout():
                     dbc.Col(dbc.Button("Submit", id="update-submit-btn", color="primary", className="mt-3 w-100"),
                             width=12, sm=6),
                     dbc.Col(dbc.Button("Deactivate", id="toggle-active-btn", color="danger", className="mt-3 w-100"),
-                            width=12, sm=6),
+                            width=12, sm=6, id="toggle-active-col"),
                 ], className="d-flex justify-content-between mb-3"),
                 dbc.Button("Delete this sensor", id="delete-sensor-btn", color="danger", outline=True,
                            className="w-100"),

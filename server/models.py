@@ -88,6 +88,8 @@ class Sensor(db.Model):
     image_data = db.Column(db.Text, nullable=True)
     timezone = db.Column(db.String(50), default='America/Chicago', nullable=False)
     active = db.Column(db.Boolean, default=True)
+    # A test device is hidden from every public page and has no location until it goes live
+    testing = db.Column(db.Boolean, default=False, nullable=False, server_default=text('false'))
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Relationship to data (Cascades delete: if sensor is deleted, data is deleted)
@@ -291,11 +293,16 @@ def get_sensor_timezone(sensor_name):
     return fixed_timezone.utc
 
 
-def get_all_sensors():
+def get_all_sensors(testing=False):
     """Returns a list of all sensors as dictionaries.
        Doesn't use is_online for efficiency.
+       testing: False for live sensors only (every public page), True for test devices
+       only, or None for both.
     """
-    sensors = db.session.query(Sensor).options(defer(Sensor.image_data)).all()
+    query = db.session.query(Sensor).options(defer(Sensor.image_data))
+    if testing is not None:
+        query = query.filter(Sensor.testing.is_(testing))
+    sensors = query.order_by(Sensor.name).all()
 
     #Get the latest timestamp for ALL sensors in ONE query
     latest_data = db.session.query(
@@ -316,11 +323,13 @@ def get_all_sensors():
                 is_online = True
 
         results.append({
+            "id": s.id,
             "name": s.name,
             "latitude": s.latitude,
             "longitude": s.longitude,
             "device_type": s.device_type,
             "active": s.active,
+            "testing": s.testing,
             "is_online": is_online,
             "last_report": latest_pings.get(s.id)
         })
@@ -338,8 +347,9 @@ def get_network_summary():
         "active": len(active),
         "online": sum(s['is_online'] for s in active),
         # One packet stores many values, so a report is one sensor at one time
-        "reports_24h": db.session.query(SensorData.sensor_id, SensorData.timestamp).filter(
-            SensorData.timestamp >= since).distinct().count(),
+        "reports_24h": db.session.query(SensorData.sensor_id, SensorData.timestamp)
+            .join(Sensor, SensorData.sensor_id == Sensor.id)
+            .filter(SensorData.timestamp >= since, Sensor.testing.is_(False)).distinct().count(),
         "latest_report": max(reports) if reports else None,
     }
 
@@ -514,20 +524,31 @@ def create_or_update_sensor(name,
                             active = True,
                             user_id = None,
                             sensor_id=None,
-                            navd88_elevation=None):
+                            navd88_elevation=None,
+                            testing=False):
+    """
+    testing applies to a new sensor only. A test device needs no location, and
+    never gets a location history record: its first one opens at go_live().
+    """
     try:
         now = datetime.utcnow()
         action = None
 
-        # Prevent invalid lat/lon
-        # This might should go into the callbacks that use this function
-        try:
-            lat_float, lon_float = float(latitude), float(longitude)
-        except (ValueError, TypeError):
-            return "Error: Latitude and Longitude must be numbers."
+        sensor = None
+        if sensor_id:
+            sensor = Sensor.query.get(sensor_id)
+        elif name:
+            sensor = get_sensor_by_name(name)
 
-        if not (-90 <= lat_float <= 90) or not (-180 <= lon_float <= 180):
-            return "Error: Coordinates out of range (Lat: -90 to 90, Lon: -180 to 180)"
+        is_test = sensor.testing if sensor else bool(testing)
+
+        # A test device sits on a desk, so any location it is given is not stored
+        if is_test:
+            lat_float = lon_float = None
+        else:
+            lat_float, lon_float, error = parse_coordinates(latitude, longitude)
+            if error:
+                return error
 
         # NAVD88 elevation is optional (only meaningful for tide gauges)
         if navd88_elevation is not None and navd88_elevation != "":
@@ -538,19 +559,13 @@ def create_or_update_sensor(name,
         else:
             navd88_elevation = None
 
-        sensor = None
-        if sensor_id:
-            sensor = Sensor.query.get(sensor_id)
-        elif name:
-            sensor = get_sensor_by_name(name)
-
         # New sensor
         if not sensor:
-            sensor = Sensor(name = name)
+            sensor = Sensor(name=name, testing=is_test)
             db.session.add(sensor)
 
             # Create the first history record
-            new_history = LocationHistory(
+            new_history = None if is_test else LocationHistory(
                 latitude=lat_float,
                 longitude=lon_float,
                 deployed_at=now
@@ -571,10 +586,15 @@ def create_or_update_sensor(name,
 
             # We add sensor first to generate ID
             db.session.flush()
-            new_history.sensor_id = sensor.id
-            db.session.add(new_history)
+            if new_history:
+                new_history.sensor_id = sensor.id
+                db.session.add(new_history)
 
             action = 'created'
+
+        # A test device has no deployments to record
+        elif is_test:
+            pass
 
         # Updating sensor, address location history
         else:
@@ -628,6 +648,73 @@ def create_or_update_sensor(name,
     except Exception as e:
         db.session.rollback()
         return f"Database Error: {str(e)}"
+
+def parse_coordinates(latitude, longitude):
+    """Returns (latitude, longitude, error), with error None when both are valid."""
+    try:
+        lat_float, lon_float = float(latitude), float(longitude)
+    except (ValueError, TypeError):
+        return None, None, "Error: Latitude and Longitude must be numbers."
+
+    if not (-90 <= lat_float <= 90) or not (-180 <= lon_float <= 180):
+        return None, None, "Error: Coordinates out of range (Lat: -90 to 90, Lon: -180 to 180)"
+    return lat_float, lon_float, None
+
+
+def count_test_readings(sensor_id):
+    """Values and tide gauge packets stored for a sensor, which go_live() deletes."""
+    return (SensorData.query.filter_by(sensor_id=sensor_id).count()
+            + GaugeReading.query.filter_by(sensor_id=sensor_id).count())
+
+
+def go_live(sensor_id, latitude, longitude, navd88_elevation=None):
+    """
+    Makes a test device public at its field location. Readings taken while testing
+    (on a desk, in air or tap water) are deleted so they never reach graphs, exports
+    or QC work, and the first deployment starts now. Returns an error, or None.
+    """
+    sensor = db.session.get(Sensor, sensor_id)
+    if not sensor:
+        return "Error: Sensor not found."
+    if not sensor.testing:
+        return f"Error: '{sensor.name}' is already live."
+
+    lat_float, lon_float, error = parse_coordinates(latitude, longitude)
+    if error:
+        return error
+
+    if navd88_elevation in (None, ""):
+        navd88_elevation = None
+    else:
+        try:
+            navd88_elevation = float(navd88_elevation)
+        except (ValueError, TypeError):
+            return "Error: NAVD88 Elevation must be a number."
+
+    try:
+        data_ids = db.session.query(SensorData.id).filter_by(sensor_id=sensor_id)
+        QcAssessment.query.filter(QcAssessment.sensor_data_id.in_(data_ids)).delete(synchronize_session=False)
+        # Gauge readings point at their datum, so they go first. A fresh datum then
+        # covers the whole deployment.
+        for model in (SensorData, GaugeReading, GaugeDatum, LocationHistory):
+            model.query.filter_by(sensor_id=sensor_id).delete(synchronize_session=False)
+
+        now = datetime.utcnow()
+        sensor.testing = False
+        sensor.active = True
+        sensor.latitude = lat_float
+        sensor.longitude = lon_float
+        sensor.navd88_elevation = navd88_elevation if sensor.device_type == "tide_gauge" else None
+        db.session.add(LocationHistory(sensor_id=sensor.id, latitude=lat_float, longitude=lon_float,
+                                       deployed_at=now))
+        db.session.flush()
+        update_gauge_datum(sensor.id, sensor.navd88_elevation, now)
+        db.session.commit()
+        return None
+    except Exception as e:
+        db.session.rollback()
+        return f"Database Error: {str(e)}"
+
 
 def get_locations_for_range(sensor, start, end):
     """The deployments that overlap a time range, oldest first."""

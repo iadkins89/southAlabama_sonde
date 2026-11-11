@@ -21,13 +21,24 @@ def layout():
                 dbc.Col(dbc.Input(type="text", id="device-name", placeholder="Enter device name"), width=12, md=9),
             ], className="mb-3"),
             dbc.Row([
-                dbc.Col(dbc.Label("Latitude", className="text-start text-md-end"), width=12, md=3),
-                dbc.Col(dbc.Input(type="number", id="latitude", placeholder="Enter latitude"), width=12, md=9),
+                dbc.Col(dbc.Label("Test Device", className="text-start text-md-end"), width=12, md=3),
+                dbc.Col([
+                    dbc.Switch(id="add-testing-switch", value=True, label="Start in test mode",
+                               className="mt-2"),
+                    html.Div("Test devices stay off every public page and need no location. Go live "
+                             "from Test Devices once it is in the field.", className="form-text"),
+                ], width=12, md=9),
             ], className="mb-3"),
-            dbc.Row([
-                dbc.Col(dbc.Label("Longitude", className="text-start text-md-end"), width=12, md=3),
-                dbc.Col(dbc.Input(type="number", id="longitude", placeholder="Enter longitude"), width=12, md=9),
-            ], className="mb-3"),
+            html.Div([
+                dbc.Row([
+                    dbc.Col(dbc.Label("Latitude", className="text-start text-md-end"), width=12, md=3),
+                    dbc.Col(dbc.Input(type="number", id="latitude", placeholder="Enter latitude"), width=12, md=9),
+                ], className="mb-3"),
+                dbc.Row([
+                    dbc.Col(dbc.Label("Longitude", className="text-start text-md-end"), width=12, md=3),
+                    dbc.Col(dbc.Input(type="number", id="longitude", placeholder="Enter longitude"), width=12, md=9),
+                ], className="mb-3"),
+            ], id="add-location-rows", style={"display": "none"}),
             dbc.Row([
                 dbc.Col(dbc.Label("Timezone", className="text-start text-md-end"), width=12, md=3),
                 dbc.Col(
@@ -65,8 +76,12 @@ def layout():
                 dbc.Row([
                     dbc.Col(dbc.Label("NAVD88 Elevation (m)", className="text-start text-md-end"), width=12, md=3),
                     dbc.Col(
-                        dbc.Input(type="number", id="gauge-elevation",
-                                  placeholder="Enter gauge elevation in NAVD88"),
+                        [dbc.Input(type="number", id="gauge-elevation",
+                                   placeholder="Enter gauge elevation in NAVD88"),
+                         html.Div("A gauge needs an elevation before it stores readings. For a desk "
+                                  "test, enter 0 and the water level shows the distance as a negative "
+                                  "number. You set the real elevation when it goes live.",
+                                  id="gauge-elevation-test-hint", className="form-text")],
                         width=12, md=9
                     ),
                 ], className="mb-3"),

@@ -1,9 +1,10 @@
 from dash import dcc, html, register_page
+from flask import session
 import dash_bootstrap_components as dbc
 from datetime import datetime
 import pytz
 import dash_leaflet as dl
-from server.models import get_past_deployments, get_sensor_timezone
+from server.models import get_past_deployments, get_sensor_by_name, get_sensor_timezone
 from server.utils import BATTERY_MIN_V, create_map_markers, get_carto_tile_url
 
 register_page(
@@ -33,6 +34,13 @@ def skeleton_tiles():
 
 
 def layout(sensor=None, **other_unknown_query_strings):
+    # A test device doesn't exist as far as the public is concerned
+    sensor_row = get_sensor_by_name(sensor) if sensor else None
+    testing = bool(sensor_row and sensor_row.testing)
+    if testing and not session.get('user_logged_in'):
+        from dash_app.pages.not_found_404 import layout as not_found
+        return not_found()
+
     cst = pytz.timezone('America/Chicago')
     cst_today = datetime.now(cst).replace(hour=0, minute=0, second=0, microsecond=0)
 
@@ -44,12 +52,15 @@ def layout(sensor=None, **other_unknown_query_strings):
     layout = dbc.Container([
         dcc.Store(id="sensor-name-store", data=sensor),
         dcc.Store(id="live-sensor-data"),
+        # Test devices are left out of live broadcasts, so their page checks for new readings itself
+        dcc.Interval(id="test-device-refresh", interval=60 * 1000, disabled=not testing),
         dcc.Store(id="selected-deployment-store", data=deployments[0] if deployments else None),
 
         # Sensor name and actions
         html.Div([
             html.Div([
-                dcc.Link([html.I(className="bi bi-arrow-left"), "All sensors"], href="/", className="hero-back"),
+                dcc.Link([html.I(className="bi bi-arrow-left"), "Test devices" if testing else "All sensors"],
+                         href="/onboarding/test-devices" if testing else "/", className="hero-back"),
                 html.H1(id="card-title", className="hero-title"),
                 html.Div(id="hero-meta", className="hero-meta"),
             ]),

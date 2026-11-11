@@ -16,6 +16,8 @@ def run_migrations():
         conn.execute(text("SET LOCAL lock_timeout = '10s'"))
         conn.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": MIGRATION_LOCK_KEY})
         conn.execute(text("ALTER TABLE sensor_data ADD COLUMN IF NOT EXISTS qc_flag SMALLINT"))
+        # Sensors from before test devices existed are all live
+        conn.execute(text("ALTER TABLE sensors ADD COLUMN IF NOT EXISTS testing BOOLEAN NOT NULL DEFAULT FALSE"))
 
         # Give tide gauges that already have an elevation their first datum.
         conn.execute(text("""
