@@ -89,8 +89,15 @@ class Security(unittest.TestCase):
         return SensorData.query.count()
 
     def log_in(self):
+        from server.database import db
+        from server.models import User
+        admin = User(username="admin", is_admin=True)
+        admin.set_password("x")
+        db.session.add(admin)
+        db.session.commit()
         with self.client.session_transaction() as session:
             session["user_logged_in"] = True
+            session["user_id"] = admin.id
 
     def sensor(self, name):
         from server.database import db
@@ -150,7 +157,7 @@ class Security(unittest.TestCase):
         from server.database import db
         from server.models import User
 
-        user = User(username="tester")
+        user = User(username="tester", is_admin=True)  # Ownership has its own tests
         user.set_password("right")
         db.session.add(user)
         db.session.commit()

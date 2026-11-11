@@ -1,5 +1,5 @@
 from dash import dcc, html, register_page
-from flask import session
+from dash_app.access import managed_sensor
 import dash_bootstrap_components as dbc
 from datetime import datetime
 import pytz
@@ -37,7 +37,7 @@ def layout(sensor=None, **other_unknown_query_strings):
     # A test device doesn't exist as far as the public is concerned
     sensor_row = get_sensor_by_name(sensor) if sensor else None
     testing = bool(sensor_row and sensor_row.testing)
-    if testing and not session.get('user_logged_in'):
+    if testing and not managed_sensor(sensor):
         from dash_app.pages.not_found_404 import layout as not_found
         return not_found()
 

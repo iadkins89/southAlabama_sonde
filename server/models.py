@@ -293,15 +293,25 @@ def get_sensor_timezone(sensor_name):
     return fixed_timezone.utc
 
 
-def get_all_sensors(testing=False):
+def user_can_manage(user, sensor):
+    """Admins manage every sensor. Anyone else manages only the sensors they own."""
+    if not user or not sensor:
+        return False
+    return bool(user.is_admin) or user in sensor.users
+
+
+def get_all_sensors(testing=False, user=None):
     """Returns a list of all sensors as dictionaries.
        Doesn't use is_online for efficiency.
        testing: False for live sensors only (every public page), True for test devices
        only, or None for both.
+       user: limits the list to the sensors this user may manage, for onboarding pages.
     """
     query = db.session.query(Sensor).options(defer(Sensor.image_data))
     if testing is not None:
         query = query.filter(Sensor.testing.is_(testing))
+    if user is not None and not user.is_admin:
+        query = query.filter(Sensor.users.any(User.id == user.id))
     sensors = query.order_by(Sensor.name).all()
 
     #Get the latest timestamp for ALL sensors in ONE query

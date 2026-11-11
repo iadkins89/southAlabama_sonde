@@ -92,12 +92,24 @@ class TestDevices(unittest.TestCase):
             emit.assert_called_once()
         self.assertGreater(SensorData.query.filter_by(sensor_id=self.sensor("bench_sonde").id).count(), 0)
 
+    def admin_id(self):
+        from server.database import db
+        from server.models import User
+        admin = User.query.filter_by(username="admin").first()
+        if not admin:
+            admin = User(username="admin", is_admin=True)
+            admin.set_password("x")
+            db.session.add(admin)
+            db.session.commit()
+        return admin.id
+
     def dashboard(self, sensor, logged_in):
         import dash
         from flask import session
         page = next(p for p in dash.page_registry.values() if p["path"] == "/dashboard")
+        user_id = self.admin_id()
         with self.server.test_request_context():
-            session["user_logged_in"] = logged_in
+            session.update(user_logged_in=logged_in, user_id=user_id)
             return str(page["layout"](sensor=sensor))
 
     def test_a_test_device_dashboard_needs_a_login(self):
@@ -109,8 +121,9 @@ class TestDevices(unittest.TestCase):
     def test_dashboard_data_needs_a_login_for_test_devices(self):
         from flask import session
         from dash_app.callbacks.dashboard import can_view
+        user_id = self.admin_id()
         with self.server.test_request_context():
-            session["user_logged_in"] = False
+            session.update(user_logged_in=False, user_id=user_id)
             self.assertFalse(can_view("bench_sonde"))
             self.assertTrue(can_view("live_sonde"))
             session["user_logged_in"] = True

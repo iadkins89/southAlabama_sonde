@@ -17,7 +17,7 @@ from dateutil.parser import parse as parse_date
 import dash_leaflet as dl
 from server.qc import FAIL, NOT_EVALUATED, PASS, SUSPECT
 from urllib.parse import quote
-from flask import session
+from dash_app.access import managed_sensor
 
 # Longer than this between water levels draws as a break in the line, not a bridge.
 GAUGE_GAP = timedelta(minutes=15)
@@ -56,9 +56,12 @@ BOARD_TEMP_COLD = -10
 
 
 def can_view(sensor_name):
-    """A test device is shown only to signed-in users. Callbacks can be called directly, so each checks."""
+    """
+    A test device is shown only to a signed-in user who manages it (its owner or an
+    admin). Callbacks can be called directly, so each checks.
+    """
     sensor = get_sensor_by_name(sensor_name) if sensor_name else None
-    return not (sensor and sensor.testing and not session.get('user_logged_in'))
+    return not (sensor and sensor.testing and not managed_sensor(sensor_name))
 
 
 def signal_color(value, good_above, poor_below):

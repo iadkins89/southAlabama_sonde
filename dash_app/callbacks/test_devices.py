@@ -4,7 +4,8 @@ from dash import callback, Input, Output, State, ALL, ctx, dcc, html, no_update
 import dash_bootstrap_components as dbc
 from flask import session
 
-from server.models import count_test_readings, get_all_sensors, get_sensor_by_name, go_live
+from server.models import count_test_readings, go_live
+from dash_app.access import managed_sensor, managed_sensors
 from server.utils import device_type_label, relative_time, sensor_label
 
 
@@ -36,7 +37,8 @@ def list_test_devices(pathname, refresh):
     if not session.get('user_logged_in'):
         return no_update
 
-    sensors = get_all_sensors(testing=True)
+    # Only this user's test devices, or every one for an admin
+    sensors = managed_sensors(testing=True)
     if not sensors:
         return html.Div(
             [html.Div(html.I(className="bi bi-tools"), className="empty-icon"),
@@ -70,7 +72,7 @@ def open_go_live_dialog(go_live_clicks, cancel_clicks):
     if not isinstance(trigger, dict) or not ctx.triggered[0]['value']:
         return False, None, no_update, no_update, no_update, None, None, None, ""
 
-    sensor = get_sensor_by_name(trigger['index'])
+    sensor = managed_sensor(trigger['index'])
     if not sensor or not sensor.testing:
         return False, None, no_update, no_update, no_update, None, None, None, ""
 
@@ -104,7 +106,7 @@ def confirm_go_live(n_clicks, sensor_name, latitude, longitude, elevation):
     if not session.get('user_logged_in'):
         return "Please log in again.", no_update, no_update, no_update, no_update
 
-    sensor = get_sensor_by_name(sensor_name) if sensor_name else None
+    sensor = managed_sensor(sensor_name)
     if not sensor:
         return f"Could not find sensor '{sensor_name}'.", no_update, no_update, no_update, no_update
     if latitude is None or longitude is None:
