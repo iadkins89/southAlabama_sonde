@@ -17,6 +17,7 @@ from dateutil.parser import parse as parse_date
 import dash_leaflet as dl
 from server.qc import FAIL, NOT_EVALUATED, PASS, SUSPECT
 from urllib.parse import quote
+from dash_app.access import managed_sensor
 
 # Longer than this between water levels draws as a break in the line, not a bridge.
 GAUGE_GAP = timedelta(minutes=15)
@@ -52,6 +53,15 @@ BOARD_TEMP_BAR_MAX = 80
 BOARD_TEMP_WARM = 55
 BOARD_TEMP_HOT = 70
 BOARD_TEMP_COLD = -10
+
+
+def can_view(sensor_name):
+    """
+    A test device is shown only to a signed-in user who manages it (its owner or an
+    admin). Callbacks can be called directly, so each checks.
+    """
+    sensor = get_sensor_by_name(sensor_name) if sensor_name else None
+    return not (sensor and sensor.testing and not managed_sensor(sensor_name))
 
 
 def signal_color(value, good_above, poor_below):
@@ -432,6 +442,8 @@ def build_figure(sensor_name, parameter, values, radio, thin, show_live):
     ]
 )
 def update_multi_sensor_graph(radio, slider, sensor_name, deploy_data, live_data):
+    if not can_view(sensor_name):
+        raise PreventUpdate
 
     if not sensor_name:
         return html.Div("No sensor selected.")
@@ -492,6 +504,8 @@ def update_multi_sensor_graph(radio, slider, sensor_name, deploy_data, live_data
     prevent_initial_call=True
 )
 def reload_year_graph_on_zoom(relayout, radio, slider, sensor_name, deploy_data):
+    if not can_view(sensor_name):
+        raise PreventUpdate
     if not relayout or not uses_thinning(radio, slider, deploy_data):
         raise PreventUpdate
 
@@ -540,6 +554,8 @@ def toggle_download_data_offcanvas(n_clicks, is_open):
      State('radio-data-item', 'value')]
 )
 def file_download(n_clicks, sensor_name, start_date, end_date, filename, data_type):
+    if not can_view(sensor_name):
+        raise PreventUpdate
     if n_clicks is None:
         raise PreventUpdate
     else:
@@ -596,6 +612,8 @@ def toggle_sensor_health_offcanvas(n_clicks, is_open):
      Input("live-sensor-data", "data")]
 )
 def update_sensor_health(sensor_name, live_data):
+    if not can_view(sensor_name):
+        raise PreventUpdate
 
     raw_data = get_most_recent(sensor_name, Lora=True)
 
@@ -672,6 +690,8 @@ def toggle_history_offcanvas(n_clicks, is_open):
     Input("sensor-name-store", "data"),
 )
 def get_sensor_pic(sensor_name):
+    if not can_view(sensor_name):
+        raise PreventUpdate
     if not sensor_name:
         return "/assets/no_image_available.png"
 
@@ -691,9 +711,12 @@ def avg_label(parameter):
 
 def hero_meta(sensor, location, moment=None, archived_range=None):
     device_type = sensor.device_type if sensor else None
+    testing = bool(sensor and sensor.testing)
     items = [html.Span([html.I(className=f"bi {TYPE_ICONS.get(device_type, 'bi-broadcast')}"),
                         device_type_label(device_type)]),
-             html.Span([html.I(className="bi bi-geo-alt"), location])]
+             html.Span([html.I(className="bi bi-geo-alt"), "Not deployed" if testing else location])]
+    if testing:
+        items.insert(0, html.Span("Test Device", className="hero-archived"))
     if archived_range:
         items.insert(0, html.Span("Archived View", className="hero-archived"))
         # If the line is too narrow, the duration moves down whole instead of splitting
@@ -712,6 +735,8 @@ def hero_meta(sensor, location, moment=None, archived_range=None):
      Input("selected-deployment-store", "data")]
 )
 def update_summary_from_url(sensor_name, live_data, deploy_data):
+    if not can_view(sensor_name):
+        raise PreventUpdate
     if not sensor_name:
         return "No Sensor Found", None, html.P("No sensor data was found.", className="text-warning")
 
@@ -910,3 +935,12 @@ def update_map_view(deploy_data, sensor_name, show_inactive, current_viewport):
     )]
 
     return other_markers + historic_marker, map_viewport([lat, lon], 12, current_viewport)
+
+@callback(
+    Output("live-sensor-data", "data", allow_duplicate=True),
+    Input("test-device-refresh", "n_intervals"),
+    prevent_initial_call=True
+)
+def refresh_test_device(n_intervals):
+    # Any new value redraws the graphs, tiles and health, as a broadcast packet would
+    return {"refresh": n_intervals}

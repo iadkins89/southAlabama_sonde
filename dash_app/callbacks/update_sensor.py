@@ -2,16 +2,25 @@ import time
 
 from dash import callback, Input, Output, State, callback_context, no_update
 from server.database import db
-from server.models import (User, count_sensor_readings, delete_sensor, get_sensor_by_name,
-                           create_or_update_sensor, get_all_sensors)
+from server.models import (User, count_sensor_readings, delete_sensor,
+                           create_or_update_sensor)
+from dash_app.access import managed_sensor, managed_sensors
 from server.utils import upload_preview
 import dash_bootstrap_components as dbc
 from flask import session
 
 
+def option_label(sensor):
+    if sensor['testing']:
+        return f"{sensor['name']} (Testing)"
+    if not sensor.get('active', True):
+        return f"{sensor['name']} (Inactive)"
+    return sensor['name']
+
+
 def sensor_options():
-    return [{'label': f"{s['name']} (Inactive)" if not s.get('active', True) else s['name'],
-             'value': s['name']} for s in get_all_sensors()]
+    # Only the sensors this user owns, or every sensor for an admin
+    return [{'label': option_label(s), 'value': s['name']} for s in managed_sensors(testing=None)]
 
 
 @callback(
@@ -32,6 +41,19 @@ def show_form_on_device_select(selected_device):
     return {"display": "none"}  # Hide the form if no device is selected
 
 @callback(
+    [Output("update-location-rows", "style"),
+     Output("update-testing-note", "style"),
+     Output("toggle-active-col", "style")],
+    Input("select-device-dropdown", "value")
+)
+def hide_location_for_test_devices(selected_device):
+    sensor = managed_sensor(selected_device)
+    if sensor and sensor.testing:
+        return {"display": "none"}, {}, {"display": "none"}
+    return {}, {"display": "none"}, {}
+
+
+@callback(
     Output("update-gauge-elevation-row", "style"),
     Input("update-device-type", "value")
 )
@@ -49,7 +71,7 @@ def toggle_update_gauge_elevation_field(device_type):
 def show_update_sensor_preview(image_data, selected_device):
     # With no new upload, show the photo the sensor already has
     if not image_data and selected_device:
-        sensor = get_sensor_by_name(selected_device)
+        sensor = managed_sensor(selected_device)
         image_data = sensor.image_data if sensor else None
     return upload_preview(image_data)
 
@@ -66,9 +88,9 @@ def show_update_sensor_preview(image_data, selected_device):
     [Input("select-device-dropdown", "value")]
 )
 def populate_form_with_device_info(selected_device):
-    if selected_device:
-        # Get the sensor details from the database
-        sensor = get_sensor_by_name(selected_device)
+    # Get the sensor details from the database
+    sensor = managed_sensor(selected_device)
+    if sensor:
 
         btn_text = "Deactivate" if sensor.active else "Reactivate"
         btn_color = "danger" if sensor.active else "success"
@@ -102,7 +124,7 @@ def update_sensor_information(submit_clicks, deactivate_clicks, original_name, n
 
     button_id = ctx.triggered[0]['prop_id'].split('.')[0]
 
-    sensor_to_update = get_sensor_by_name(original_name)
+    sensor_to_update = managed_sensor(original_name)
 
     if not sensor_to_update:
         return dbc.Alert(f"Error: Could not find sensor '{original_name}' in the database.", color="danger")
@@ -159,7 +181,7 @@ def update_sensor_information(submit_clicks, deactivate_clicks, original_name, n
     prevent_initial_call=True
 )
 def open_delete_dialog(open_clicks, cancel_clicks, selected_device):
-    sensor = get_sensor_by_name(selected_device)
+    sensor = managed_sensor(selected_device)
     if callback_context.triggered_id != "delete-sensor-btn" or not sensor:
         return False, no_update, "", ""
 
@@ -181,7 +203,8 @@ def delete_error(selected_device, password):
     if not password or not user.check_password(password):
         return "Incorrect password."
 
-    sensor = get_sensor_by_name(selected_device)
+    # Someone else's sensor reads as missing, so its existence isn't confirmed
+    sensor = managed_sensor(selected_device)
     if not sensor:
         return f"Could not find sensor '{selected_device}'."
 

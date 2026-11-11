@@ -1301,6 +1301,39 @@ a {
     font-size: 0.85rem;
 }
 
+/* ----- Test devices ----- */
+.test-device {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 16px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--surface);
+}
+
+.test-device-text {
+    min-width: 0;
+}
+
+.test-device-name {
+    color: var(--ink);
+    font-weight: 600;
+}
+
+.test-device-meta {
+    color: var(--ink-3);
+    font-size: 0.85rem;
+}
+
+.test-device-actions {
+    display: flex;
+    gap: 8px;
+}
+
 /* ----- About ----- */
 .about-hero {
     padding: 56px 0 44px;

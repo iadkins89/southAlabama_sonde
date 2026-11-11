@@ -3,5 +3,6 @@ from . import dashboard
 from . import home
 from . import onboarding
 from . import update_sensor
+from . import test_devices
 from . import navigation
 from . import clientside

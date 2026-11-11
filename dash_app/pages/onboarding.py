@@ -46,6 +46,11 @@ def layout():
                               html.Div("Update Sensor", className="action-card-title"),
                               html.Div("Edit details, move a deployment or deactivate a device.", className="action-card-text")],
                              href="/onboarding/update-sensor", className="action-card"),
+                    dcc.Link([html.I(className="bi bi-tools"),
+                              html.Div("Test Devices", className="action-card-title"),
+                              html.Div("Check devices before they go public, then take them live.",
+                                       className="action-card-text")],
+                             href="/onboarding/test-devices", className="action-card"),
                 ], className="action-cards"),
             ]),
         ])
