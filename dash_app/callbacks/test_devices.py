@@ -2,6 +2,7 @@ import time
 
 from dash import callback, Input, Output, State, ALL, ctx, dcc, html, no_update
 import dash_bootstrap_components as dbc
+from dash.exceptions import PreventUpdate
 from flask import session
 
 from server.models import count_test_readings, go_live
@@ -15,7 +16,8 @@ def test_device_row(sensor, readings):
         html.Div([
             html.Div(sensor_label(sensor['name']), className="test-device-name"),
             html.Div([device_type_label(sensor.get('device_type')), " · ",
-                      ["Last report ", relative_time(last_report)] if last_report else "No data yet",
+                      # A Span, not a list: Dash can't draw a list nested inside children
+                      html.Span(["Last report ", relative_time(last_report)]) if last_report else "No data yet",
                       f" · {readings:,} stored values"],
                      className="test-device-meta"),
         ], className="test-device-text"),
@@ -102,6 +104,9 @@ def open_go_live_dialog(go_live_clicks, cancel_clicks):
     prevent_initial_call=True
 )
 def confirm_go_live(n_clicks, sensor_name, latitude, longitude, elevation):
+    # The dialog's button is drawn with the page, which fires this once unclicked
+    if not n_clicks:
+        raise PreventUpdate
     # The page checks the login too, but this callback can be called directly
     if not session.get('user_logged_in'):
         return "Please log in again.", no_update, no_update, no_update, no_update

@@ -149,6 +149,21 @@ class TestDevices(unittest.TestCase):
         self.client.post("/receive_data", json=packet("bench_sonde", hour=13))
         self.assertGreater(SensorData.query.filter_by(sensor_id=bench_id).count(), 0)
 
+    def test_a_test_device_row_with_readings_has_no_nested_lists(self):
+        # Dash refuses to draw a list inside children, and the page crashed back to /onboarding
+        from dash.development.base_component import Component
+        from dash_app.callbacks.test_devices import test_device_row
+
+        def nested_lists(node):
+            children = getattr(node, "children", None) if isinstance(node, Component) else None
+            if isinstance(children, (list, tuple)):
+                return any(isinstance(c, (list, tuple)) or nested_lists(c) for c in children)
+            return nested_lists(children) if isinstance(children, Component) else False
+
+        row = test_device_row({"name": "bench_sonde", "device_type": "sonde",
+                               "last_report": datetime(2026, 11, 5, 12, 0)}, 12)
+        self.assertFalse(nested_lists(row))
+
     def test_going_live_checks_its_input(self):
         from server.models import go_live
         bench_id = self.sensor("bench_sonde").id
